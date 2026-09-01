@@ -105,8 +105,13 @@ function closeNotesEditor(): void {
 }
 
 async function initEditor(): Promise<void> {
+  // Bundled locally under public/libs/tinymce/ — resolved through the app's own
+  // base path so it works whatever the repo/deployment is named, instead of
+  // fetching it from the upstream Azgaar project's own GitHub Pages site.
+  const tinymceBase = `${import.meta.env.BASE_URL}libs/tinymce`;
+
   if (!window.tinymce) {
-    const url = "https://azgaar.github.io/Fantasy-Map-Generator/libs/tinymce/tinymce.min.js";
+    const url = `${tinymceBase}/tinymce.min.js`;
     try {
       await import(/* @vite-ignore */ url);
     } catch {
@@ -123,7 +128,7 @@ async function initEditor(): Promise<void> {
   const tinymce = window.tinymce;
   if (!tinymce) return;
 
-  tinymce._setBaseUrl("https://azgaar.github.io/Fantasy-Map-Generator/libs/tinymce");
+  tinymce._setBaseUrl(tinymceBase);
   tinymce.init({
     license_key: "gpl",
     selector: "#notesLegend",

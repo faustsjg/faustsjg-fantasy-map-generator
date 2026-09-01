@@ -119,22 +119,22 @@ function showUpdateWindow(storedVersion: string | null): void {
   const discord = "https://discordapp.com/invite/X7E84HU";
   const patreon = "https://www.patreon.com/azgaar";
 
-  alertMessage.innerHTML = /* html */ `The Fantasy Map Generator is updated up to version <strong>${VERSION}</strong>. This version is compatible with <a href="${changelog}" target="_blank">previous versions</a>, loaded save files will be auto-updated.
+  alertMessage.innerHTML = /* html */ `Faustsjg Fantasy Map Generator is updated up to version <strong>${VERSION}</strong>. This version is compatible with <a href="${changelog}" target="_blank">previous versions</a> of the upstream generator, loaded save files will be auto-updated.
     ${storedVersion ? "<span>In case of errors reload the page to update the code.</span>" : ""}
 
     <ul>
-      <strong>Latest changes:</strong>
+      <strong>Latest changes inherited from the base generator:</strong>
       ${latestPublicChanges.map(change => `<li>${change}</li>`).join("")}
     </ul>
 
     ${isElectron() ? "" : `<p>The Generator is also available as a <a href="#" onclick="window.Services.AppOffer.open(); return false">desktop app</a> that works offline.</p>`}
 
-    <p>Join our <a href="${discord}" target="_blank">Discord server</a> and <a href="${reddit}" target="_blank">Reddit community</a> to ask questions, share maps, discuss the Generator and Worldbuilding, report bugs and propose new features.</p>
-    <span><i>Thanks for all supporters on <a href="${patreon}" target="_blank">Patreon</a>!</i></span>`;
+    <p>Azgaar's <a href="${discord}" target="_blank">Discord server</a> and <a href="${reddit}" target="_blank">Reddit community</a> are good places to ask questions about the base generator and share maps. For bugs or feature requests specific to this fork, use its <a href="https://github.com/${__RELEASES_REPO__}/issues" target="_blank">GitHub issues</a>.</p>
+    <span><i>Thanks for all supporters on <a href="${patreon}" target="_blank">Patreon</a> — support goes to Azgaar, the original author!</i></span>`;
 
   $("#alert").dialog({
     resizable: false,
-    title: "Fantasy Map Generator update",
+    title: "Faustsjg Fantasy Map Generator update",
     width: "28em",
     position: { my: "center center-4em", at: "center", of: "svg" },
     buttons: {

@@ -1,6 +1,8 @@
-// The Desktop App dialog: what the app is and which file this visitor needs
-const RELEASES_API = "https://api.github.com/repos/Azgaar/Fantasy-Map-Generator/releases/latest";
-const RELEASES_PAGE = "https://github.com/Azgaar/Fantasy-Map-Generator/releases/latest";
+// The Desktop App dialog: what the app is and which file this visitor needs.
+// Points at this deploy's own repo (see .github/workflows/desktop-build.yml),
+// not the upstream Azgaar project — its builds don't have this fork's features.
+const RELEASES_API = `https://api.github.com/repos/${__RELEASES_REPO__}/releases/latest`;
+const RELEASES_PAGE = `https://github.com/${__RELEASES_REPO__}/releases/latest`;
 
 type Os = "windows" | "mac" | "linux";
 type Asset = { name: string; browser_download_url: string; size: number };

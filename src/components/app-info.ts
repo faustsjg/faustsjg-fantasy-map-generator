@@ -22,31 +22,33 @@ const GUIDES = {
 };
 
 const LINKS = [
-  link("https://github.com/Azgaar/Fantasy-Map-Generator", "GitHub repository"),
+  link(`https://github.com/${__RELEASES_REPO__}`, "This fork's GitHub repository"),
+  link(`https://github.com/${__RELEASES_REPO__}/issues`, "Report a bug / request a feature"),
+  link("https://github.com/Azgaar/Fantasy-Map-Generator", "Upstream: Azgaar's Fantasy Map Generator"),
   link("https://github.com/Azgaar/Fantasy-Map-Generator/blob/master/LICENSE", "License"),
-  link(`${WIKI}/Changelog`, "Changelog"),
+  link(`${WIKI}/Changelog`, "Upstream changelog"),
   link(`${WIKI}/Hotkeys`, "Hotkeys"),
-  link("https://trello.com/b/7x832DG4/fantasy-map-generator", "Devboard"),
-  `<a href="mailto:azgaar.fmg@yandex.by" target="_blank">Contact Azgaar</a>`
+  link("https://trello.com/b/7x832DG4/fantasy-map-generator", "Upstream devboard")
 ];
 
 function render(): string {
-  return /* html */ `<b>Fantasy Map Generator</b> (FMG) is a free open-source application. It means that you own all created maps and can use them as
-    you wish.
+  return /* html */ `<b>Faustsjg Fantasy Map Generator</b> is a free, open-source fork of Azgaar's <i>Fantasy Map Generator</i> (FMG), adding a temporal
+    dimension — the same map viewed across eras, with civilizations that rise, expand, and fall — plus optional
+    AI-assisted terrain and lore. It means that you own all created maps and can use them as you wish.
 
     <p>
-      The development is community-backed, you can donate on ${COMMUNITY.patreon}. You can also help creating overviews, tutorials and spreding the word about the
+      The base generator's development is community-backed, you can donate to Azgaar on ${COMMUNITY.patreon}. You can also help creating overviews, tutorials and spreding the word about the
       Generator.
     </p>
 
     <p>
-      The best way to get help is to contact the community on ${COMMUNITY.discord} and ${COMMUNITY.reddit}. Before asking questions, please check out the
+      For questions about the base generator, Azgaar's community on ${COMMUNITY.discord} and ${COMMUNITY.reddit} is the best place to ask. Before asking questions, please check out the
       ${GUIDES.quickStart}, the ${GUIDES.qaa}, and ${GUIDES.video}.
     </p>
 
     <ul style="columns:2">${LINKS.map(item => `<li>${item}</li>`).join("")}</ul>
 
-    <p>Check out our other projects:
+    <p>Azgaar's other projects:
       <ul>
         <li>${PROJECTS.armoria}: a tool for creating heraldic coats of arms</li>
         <li>${PROJECTS.deorum}: a vast gallery of customizable fantasy characters</li>

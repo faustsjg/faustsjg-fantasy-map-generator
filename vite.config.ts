@@ -14,10 +14,12 @@ const stripWebOnlyTags = {
       .replace(/<link rel="manifest"[^>]*>\s*/, "")
 };
 
-// GITHUB_REPOSITORY (e.g. "faustsjg/azgaar-cronoatles") is set by GitHub Actions
-// on every run — deriving the base path from it means a repo rename doesn't
-// silently break every asset URL in the next deploy.
-const githubRepoName = process.env.GITHUB_REPOSITORY?.split("/")[1];
+// GITHUB_REPOSITORY (e.g. "faustsjg/faustsjg-fantasy-map-generator") is set by
+// GitHub Actions on every run — deriving both the Pages base path and the repo
+// the "Desktop App" dialog checks for releases from it means a repo rename
+// doesn't silently break either one in the next deploy.
+const githubRepo = process.env.GITHUB_REPOSITORY ?? "faustsjg/faustsjg-fantasy-map-generator";
+const githubRepoName = githubRepo.split("/")[1];
 
 export default ({ mode }: { mode: string }) => ({
   root: "./src",
@@ -27,8 +29,11 @@ export default ({ mode }: { mode: string }) => ({
       : process.env.NETLIFY
         ? "/"
         : process.env.GITHUB_PAGES
-          ? `/${githubRepoName ?? "Fantasy-Map-Generator"}/`
+          ? `/${githubRepoName}/`
           : "/Fantasy-Map-Generator/",
+  define: {
+    __RELEASES_REPO__: JSON.stringify(githubRepo)
+  },
   plugins: mode === "electron" ? [stripWebOnlyTags] : [],
   build: {
     outDir: mode === "electron" ? "../dist-electron/renderer" : "../dist",

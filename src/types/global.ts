@@ -12,6 +12,9 @@ import type { Style } from "./style";
 declare global {
   var MOBILE: boolean;
 
+  /** "owner/repo" of the deploy, injected by vite.config.ts from GITHUB_REPOSITORY */
+  const __RELEASES_REPO__: string;
+
   /**
    * Migrated helpers, reachable ONLY as `window.X` — deliberately not `var`, so that bare `X`
    * in a bundled module is a compile error. src/ imports what it calls; these entries exist so
