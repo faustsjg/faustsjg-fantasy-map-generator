@@ -1,4 +1,4 @@
-import { driver } from "driver.js";
+import { driver, type DriveStep } from "driver.js";
 import { closeDialogs } from "@/components/dialog/dialog-helpers";
 import { ensureEl } from "@/utils/nodeUtils";
 import "driver.js/dist/driver.css";
@@ -8,6 +8,22 @@ function closeOptionsPanel() {
   if (options && options.style.display !== "none") {
     ensureEl("optionsHide")?.click();
   }
+}
+
+// Every "side: right" step below assumes the desktop sidebar's open space to
+// its right; most of them also target a whole panel section (the layers
+// grid, the generation-options form) that fills nearly the full height of
+// the mobile bottom-sheet, so there's no free edge — top or bottom — for a
+// pointer-style popover either. driver.js's own collision fallback then
+// lands it disconnected from what it's describing (observed: floating over
+// the map, nowhere near the highlighted panel content below it). "over"
+// sidesteps the question of which edge has room by centering the popover
+// over the whole highlighted area instead of pointing at one edge of it.
+function forMobile(steps: DriveStep[]): DriveStep[] {
+  if (!window.matchMedia("(max-width: 640px)").matches) return steps;
+  return steps.map(step =>
+    step.popover?.side === "right" ? { ...step, popover: { ...step.popover, side: "over" } } : step
+  );
 }
 
 function start() {
@@ -47,7 +63,7 @@ function start() {
       tour.destroy();
       closeOptionsPanel();
     },
-    steps: [
+    steps: forMobile([
       {
         element: "#map",
         popover: {
@@ -356,7 +372,7 @@ function start() {
           }
         }
       }
-    ]
+    ])
   });
 
   function isEditableTarget(target: EventTarget | null): boolean {
