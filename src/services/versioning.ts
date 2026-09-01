@@ -22,6 +22,14 @@ import { isElectron } from "./platform";
 export const VERSION = "1.149.2";
 
 // new changes on top
+const forkChanges = [
+  "Mobile-friendly responsive redesign",
+  "AI Terrain: describe terrain in natural language, AI writes the heightmap",
+  "AI Lore: AI-generated founding stories for states",
+  "Eras: political-history time slider with succession between eras"
+];
+
+// new changes on top
 const latestPublicChanges = [
   "Desktop App",
   "URL params to open specific layers or preset",
@@ -121,6 +129,11 @@ function showUpdateWindow(storedVersion: string | null): void {
 
   alertMessage.innerHTML = /* html */ `Faustsjg Fantasy Map Generator is updated up to version <strong>${VERSION}</strong>. This version is compatible with <a href="${changelog}" target="_blank">previous versions</a> of the upstream generator, loaded save files will be auto-updated.
     ${storedVersion ? "<span>In case of errors reload the page to update the code.</span>" : ""}
+
+    <ul>
+      <strong>Changes specific to this fork:</strong>
+      ${forkChanges.map(change => `<li>${change}</li>`).join("")}
+    </ul>
 
     <ul>
       <strong>Latest changes inherited from the base generator:</strong>
