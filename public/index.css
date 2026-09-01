@@ -78,6 +78,12 @@ iframe {
   mask-clip: no-clip;
   fill-rule: evenodd;
   user-select: none;
+  /* d3-zoom (src/components/zoom.ts) is bound directly to #map and drives
+     its own pinch-to-zoom from touch events; without this, touch-action's
+     default (auto) lets the browser's own native pinch/pan handling race
+     it, which is the standard cause of two-finger zoom feeling broken or
+     inconsistent on touch devices — most noticeable on iOS Safari. */
+  touch-action: none;
 }
 
 #canvas {
