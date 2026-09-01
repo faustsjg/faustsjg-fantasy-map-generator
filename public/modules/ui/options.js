@@ -50,14 +50,34 @@ collapsible.addEventListener("mouseleave", function () {
 });
 
 // Activate options tab on click
+const TAB_IDS = ["layersTab", "styleTab", "optionsTab", "toolsTab", "aboutTab"];
+
 document
   .getElementById("options")
   .querySelector("div.tab")
   .addEventListener("click", function (event) {
     if (event.target.tagName !== "BUTTON") return;
     const id = event.target.id;
+    // Ignores clicks on #optionsHide (◄), which has its own onclick="hideOptions()" —
+    // without this, its click used to also run past the check below, stripping the
+    // active class off the real tab and hiding every .tabcontent without restoring
+    // any of them, so re-opening later showed no tab highlighted at all
+    if (!TAB_IDS.includes(id)) return;
+
     const active = ensureEl("options").querySelector(".tab > button.active");
-    if (active && id === active.id) return; // already active tab is clicked
+    const isMobile = window.matchMedia("(max-width: 640px)").matches;
+    const isOpen = ensureEl("options").style.display !== "none";
+
+    if (active && id === active.id) {
+      // On mobile, #options (the tab row + New Map/Export/Save/Load/Reset Zoom bar)
+      // stays on screen permanently instead of hiding behind a FAB — tapping the
+      // already-open tab again is what collapses its content back down to just the
+      // bar, and tapping it again from collapsed (e.g. Layers is "active" by default
+      // on page load, before anything's been opened) re-expands the same content
+      // rather than needing a no-op click first.
+      if (isMobile) isOpen ? hideOptions(event) : showOptions(event);
+      return;
+    }
 
     if (active) active.classList.remove("active");
     ensureEl(id).classList.add("active");
@@ -78,6 +98,8 @@ document
     } else if (id === "aboutTab") {
       aboutContent.style.display = "block";
     }
+
+    if (isMobile) showOptions(event);
   });
 
 // show popup with a list of Patreon supportes (updated manually)
@@ -146,7 +168,6 @@ optionsContent.addEventListener("change", event => {
   else if (id === "shapeRendering") setRendering(value);
   else if (id === "yearInput") changeYear();
   else if (id === "eraInput") changeEra();
-  else if (id === "azgaarAssistant") toggleAssistant();
 });
 
 optionsContent.addEventListener("click", event => {

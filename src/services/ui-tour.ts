@@ -19,11 +19,19 @@ function closeOptionsPanel() {
 // the map, nowhere near the highlighted panel content below it). "over"
 // sidesteps the question of which edge has room by centering the popover
 // over the whole highlighted area instead of pointing at one edge of it.
+//
+// The #optionsTrigger step itself ("Click this arrow button to open the
+// main options panel") no longer applies on mobile at all: #options (the
+// tab row + New Map/Export/Save/Load/Reset Zoom bar) is permanently on
+// screen there instead of hidden behind that arrow, so the step just
+// highlights a hidden, zero-size element and describes a button that no
+// longer exists — drop it and let the tour move straight to the tabs,
+// which are already visible.
 function forMobile(steps: DriveStep[]): DriveStep[] {
   if (!window.matchMedia("(max-width: 640px)").matches) return steps;
-  return steps.map(step =>
-    step.popover?.side === "right" ? { ...step, popover: { ...step.popover, side: "over" } } : step
-  );
+  return steps
+    .filter(step => step.element !== "#optionsTrigger")
+    .map(step => (step.popover?.side === "right" ? { ...step, popover: { ...step.popover, side: "over" } } : step));
 }
 
 function start() {
@@ -121,6 +129,12 @@ function start() {
       {
         element: "#layersTab",
         onHighlightStarted: () => {
+          // Normally done by the #optionsTrigger step above, but forMobile()
+          // drops that step entirely on mobile — repeated here so free-roam
+          // mode still ends and any leftover open panel still closes before
+          // the rest of the tour walks through the tabs.
+          document.body.classList.remove("tour-free-roam");
+          closeOptionsPanel();
           ensureEl("layersTab")?.click();
         },
         popover: {
