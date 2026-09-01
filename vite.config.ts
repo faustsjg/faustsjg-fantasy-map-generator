@@ -14,6 +14,11 @@ const stripWebOnlyTags = {
       .replace(/<link rel="manifest"[^>]*>\s*/, "")
 };
 
+// GITHUB_REPOSITORY (e.g. "faustsjg/azgaar-cronoatles") is set by GitHub Actions
+// on every run — deriving the base path from it means a repo rename doesn't
+// silently break every asset URL in the next deploy.
+const githubRepoName = process.env.GITHUB_REPOSITORY?.split("/")[1];
+
 export default ({ mode }: { mode: string }) => ({
   root: "./src",
   base:
@@ -22,7 +27,7 @@ export default ({ mode }: { mode: string }) => ({
       : process.env.NETLIFY
         ? "/"
         : process.env.GITHUB_PAGES
-          ? "/Cronoatles/"
+          ? `/${githubRepoName ?? "Fantasy-Map-Generator"}/`
           : "/Fantasy-Map-Generator/",
   plugins: mode === "electron" ? [stripWebOnlyTags] : [],
   build: {
