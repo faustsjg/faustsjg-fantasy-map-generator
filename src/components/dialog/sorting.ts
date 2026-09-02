@@ -124,6 +124,27 @@ export function bindColumnSorting(dialogId: string, onSort: () => void): void {
       onSort();
     });
   }
+
+  syncHeaderScroll(headers);
+}
+
+/**
+ * In about half of the editor tables (Markets, Diplomacy, Goods, Labels, ...) the
+ * header renders as a sibling of the scrollable .table body rather than inside it,
+ * so it never moves when the body scrolls horizontally — on a narrow phone screen,
+ * where more columns exist than fit, that leaves column labels drifting out of
+ * alignment with their data as you scroll, or the rightmost ones permanently off
+ * to the side. Where the header instead lives inside the body (the other half of
+ * these tables), it already scrolls with it and this is a no-op.
+ */
+function syncHeaderScroll(headers: HTMLElement): void {
+  const body = headers.parentElement?.querySelector<HTMLElement>(":scope > .table");
+  if (!body || body.contains(headers)) return;
+
+  headers.style.overflowX = "hidden";
+  body.addEventListener("scroll", () => {
+    headers.scrollLeft = body.scrollLeft;
+  });
 }
 
 export function sortDataByColumns<T>(dialogId: string, data: T[], columns: EditorColumn<T>[]): T[] {

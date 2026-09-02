@@ -1393,6 +1393,14 @@ div.slider .ui-slider-handle {
 @media screen and (max-width: 600px) {
   .table {
     max-width: unset;
+    /* .table's base rule hides horizontal overflow instead of scrolling it —
+       fine on desktop where max-width: 75vw keeps wide tables (Markets,
+       Military, Regiments overviews, ...) within a sane box, but here that
+       cap is removed for the full-width mobile sheet, so any table with
+       more columns than fit at 390px (measured: Markets Overview, its
+       rightmost "Value" column entirely unreachable) silently clips data
+       instead of scrolling to it. */
+    overflow-x: auto;
   }
 }
 
