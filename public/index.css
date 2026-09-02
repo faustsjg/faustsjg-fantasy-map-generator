@@ -86,6 +86,18 @@ iframe {
   touch-action: none;
 }
 
+/* zoom.ts writes a new transform (translate + scale) to #viewbox on every
+   pan/zoom frame — this hints the browser to keep #viewbox on its own GPU
+   layer so that transform is a cheap composite instead of a main-thread
+   repaint of everything inside it (many state/province/cell paths, plus
+   the land/water masks) on every frame. Chromium already layer-promotes
+   this heuristically; Firefox is more conservative about it by default,
+   which is the more likely explanation for zoom feeling comparatively
+   slower there than an actual bug in the app's own per-frame work. */
+#viewbox {
+  will-change: transform;
+}
+
 #canvas {
   position: absolute;
   pointer-events: none;
