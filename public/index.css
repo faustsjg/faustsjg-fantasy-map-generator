@@ -2878,4 +2878,16 @@ body.tour-free-roam * {
     box-sizing: border-box;
     margin: 0.3em 0;
   }
+
+  /* #tooltip (hover/tap info on map elements, e.g. "Lunum. Click to edit
+     the label") is pinned to the bottom of the viewport — fine on desktop,
+     but that's exactly where #options (the tab + New Map/Export/... bar)
+     lives permanently now, and #tooltip's z-index sits above it, so text
+     rendered there overlapped the bar instead of the map. Moved to the top
+     of the viewport instead of raising the bar, since nothing else sits
+     there on mobile. */
+  #tooltip {
+    bottom: auto;
+    top: 0.5em;
+  }
 }
