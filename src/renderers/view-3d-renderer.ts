@@ -27,7 +27,7 @@ type Controls = {
   addEventListener: (type: string, listener: () => void) => void;
   autoRotate: boolean;
   autoRotateSpeed: number;
-  target?: { set: (x: number, y: number, z: number) => void };
+  target?: THREE.Vector3;
   enableDamping?: boolean;
   dampingFactor?: number;
   screenSpacePanning?: boolean;
@@ -276,6 +276,20 @@ const setErosionOctaves = (value: number) => {
 const toggleSatellite = () => {
   options.threeD.satellite = !options.threeD.satellite;
   redraw();
+};
+
+// snap the camera straight above its current target, keeping the same distance,
+// for a flat "map view" of the mesh (Google Earth-style top-down)
+const setTopView = () => {
+  if (!camera || !controls || options.threeD.isGlobe) return;
+  const target = controls.target;
+  if (!target) return;
+
+  const distance = camera.position.distanceTo(target);
+  camera.position.set(target.x, target.y + distance, target.z);
+  camera.lookAt(target);
+  controls.update?.();
+  render();
 };
 
 const toggleWireframe = () => {
@@ -1197,6 +1211,7 @@ export {
   setSun,
   setSunColor,
   setTimeOfDay,
+  setTopView,
   stop,
   toggle3dSubdivision,
   toggleErosion,

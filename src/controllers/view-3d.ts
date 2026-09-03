@@ -35,6 +35,7 @@ const toggleSky = () => loadRenderer().then(m => m.toggleSky());
 const setResolution = (resolution: number) => loadRenderer().then(m => m.setResolution(resolution));
 const setColors = (sky: string, water: string) => loadRenderer().then(m => m.setColors(sky, water));
 const setTimeOfDay = (presetName: string) => loadRenderer().then(m => m.setTimeOfDay(presetName));
+const setTopView = () => loadRenderer().then(m => m.setTopView());
 const saveScreenshot = () => loadRenderer().then(m => m.saveScreenshot());
 const saveOBJ = () => loadRenderer().then(m => m.saveOBJ());
 // read access to view/erosion state (used by label/icon placement and e2e tests)
@@ -312,6 +313,11 @@ function renderOptionsDialog(): void {
           onclick="window.Controllers.WorldConfigurator.open()"
           class="icon-globe"
         ></button>
+        <button
+          id="options3dTopView"
+          data-tip="Snap the camera straight above the map and enable the satellite texture"
+          class="icon-target"
+        ></button>
         <button id="options3dSave" data-tip="Save screenshot of the 3d scene" class="icon-button-screenshot"></button>
         <button id="options3dOBJSave" data-tip="Save OBJ file of the 3d scene" class="icon-download"></button>
       </div>
@@ -319,6 +325,7 @@ function renderOptionsDialog(): void {
   ensureEl("dialogs").insertAdjacentHTML("beforeend", editorHtml);
 
   ensureEl("options3dUpdate").addEventListener("click", () => void update());
+  ensureEl("options3dTopView").addEventListener("click", () => void onClickTopView());
   ensureEl("options3dSave").addEventListener("click", () => void saveScreenshot());
   ensureEl("options3dOBJSave").addEventListener("click", () => void saveOBJ());
   ensureEl("options3dScaleRange").addEventListener("input", onChangeHeightScale);
@@ -367,6 +374,7 @@ function updateValues(): void {
   ensureEl("options3dMesh").style.display = globe ? "none" : "block";
   ensureEl("options3dGlobe").style.display = globe ? "block" : "none";
   ensureEl("options3dOBJSave").style.display = globe ? "none" : "inline-block";
+  ensureEl("options3dTopView").style.display = globe ? "none" : "inline-block";
   setInput("options3dScaleRange", o.scale);
   setInput("options3dScaleNumber", o.scale);
   setInput("options3dLightnessRange", o.lightness * 100);
@@ -494,6 +502,15 @@ function onChangeErosionRiverDepth(this: HTMLInputElement): void {
 function onToggleSatellite(): void {
   if (!options.threeD.satellite) tip("Baking satellite texture...", false, "warn", 4000);
   void toggleSatellite();
+}
+
+async function onClickTopView(): Promise<void> {
+  if (!options.threeD.satellite) {
+    tip("Baking satellite texture...", false, "warn", 4000);
+    await toggleSatellite();
+    ensureEl<HTMLInputElement>("options3dSatellite").checked = true;
+  }
+  await setTopView();
 }
 
 function onChangeErosionOctaves(this: HTMLInputElement): void {
