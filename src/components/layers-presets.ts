@@ -41,9 +41,10 @@ const DEFAULT_PRESETS: Record<string, LayerId[]> = {
   ],
   emblems: ["borders", "burgIcons", "emblems", "ice", "lakes", "rivers", "routes", "scaleBar", "states", "vignette"],
   landmass: ["scaleBar"],
-  // no borders/labels/grid/roads: just the elevation-shaded terrain, matching
-  // the "satellite" style preset (see style-presets.js)
-  satellite: ["heightmap", "ice", "lakes", "rivers", "vignette"]
+  // no borders/labels/grid: elevation-shaded terrain plus small unlabeled
+  // burg markers and roads, matching the "satellite" style preset (see
+  // style-presets.js) - visible on zoom, unobtrusive zoomed out
+  satellite: ["heightmap", "burgIcons", "ice", "lakes", "rivers", "routes", "vignette"]
 };
 
 const presets: Record<string, string[]> = { ...DEFAULT_PRESETS };
