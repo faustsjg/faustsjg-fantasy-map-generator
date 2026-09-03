@@ -2727,6 +2727,14 @@ body.tour-free-roam * {
     display: none !important;
   }
 
+  /* #optionsHide's "◄" glyph was drawn for the old desktop sidebar, which
+     closed by sliding left. It now always collapses the bottom sheet
+     downward instead (see hideOptions() in options.js), so point it down
+     to match what actually happens when it's tapped. */
+  #optionsHide {
+    transform: rotate(-90deg);
+  }
+
   .drag-trigger {
     display: none;
   }
