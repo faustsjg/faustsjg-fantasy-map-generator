@@ -2734,11 +2734,17 @@ body.tour-free-roam * {
      rotating it in place (a rotated "◄" sat oddly off-center in its own
      box). That zeroes out the button's em-based padding too (line 443, em
      is relative to the element's own font-size), so restate it in rem
-     (root-relative) to keep its original footprint instead of collapsing
-     to a tiny, cramped glyph. */
+     (root-relative) to keep its original footprint. font-size: 0 also
+     collapses the button's own line-height, which left the ::after glyph
+     sitting near the top of the button instead of centered like its
+     siblings' text — flex centering sidesteps that line-height math
+     entirely, independent of any font-size quirks. */
   div.tab > button#optionsHide {
     font-size: 0;
     padding: 0.6rem 0.45rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   #optionsHide::after {
