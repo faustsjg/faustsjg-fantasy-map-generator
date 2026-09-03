@@ -13,7 +13,8 @@ const systemPresets = [
   "darkSeas",
   "cyberpunk",
   "night",
-  "monochrome"
+  "monochrome",
+  "satellite"
 ];
 const customPresetPrefix = "fmgStyle_";
 const RELIEF_STYLE_ATTRIBUTES = ["set", "size", "density"];
@@ -182,6 +183,15 @@ async function changeStyle(desiredPreset) {
   const [presetName, style] = styleData;
   localStorage.setItem("presetStyle", presetName);
   applyStyleWithUiRefresh(style);
+
+  // the "satellite" style only looks right with its matching layer set
+  // (elevation shading, no borders/labels/grid) — switch to it too, the same
+  // way picking it from the Layers preset dropdown would
+  const layersPreset = document.getElementById("layersPreset");
+  if (presetName === "satellite" && layersPreset.value !== "satellite") {
+    layersPreset.value = "satellite";
+    layersPreset.dispatchEvent(new Event("change"));
+  }
 }
 
 function applyStyleWithUiRefresh(style) {

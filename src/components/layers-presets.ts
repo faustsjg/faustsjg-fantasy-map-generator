@@ -40,7 +40,10 @@ const DEFAULT_PRESETS: Record<string, LayerId[]> = {
     "vignette"
   ],
   emblems: ["borders", "burgIcons", "emblems", "ice", "lakes", "rivers", "routes", "scaleBar", "states", "vignette"],
-  landmass: ["scaleBar"]
+  landmass: ["scaleBar"],
+  // no borders/labels/grid/roads: just the elevation-shaded terrain, matching
+  // the "satellite" style preset (see style-presets.js)
+  satellite: ["heightmap", "ice", "lakes", "rivers", "vignette"]
 };
 
 const presets: Record<string, string[]> = { ...DEFAULT_PRESETS };
