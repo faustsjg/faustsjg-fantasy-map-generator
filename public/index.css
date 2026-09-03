@@ -2729,10 +2729,21 @@ body.tour-free-roam * {
 
   /* #optionsHide's "◄" glyph was drawn for the old desktop sidebar, which
      closed by sliding left. It now always collapses the bottom sheet
-     downward instead (see hideOptions() in options.js), so point it down
-     to match what actually happens when it's tapped. */
-  #optionsHide {
-    transform: rotate(-90deg);
+     downward instead (see hideOptions() in options.js), so swap it for a
+     real down-arrow. Hide the original text with font-size: 0 rather than
+     rotating it in place (a rotated "◄" sat oddly off-center in its own
+     box). That zeroes out the button's em-based padding too (line 443, em
+     is relative to the element's own font-size), so restate it in rem
+     (root-relative) to keep its original footprint instead of collapsing
+     to a tiny, cramped glyph. */
+  div.tab > button#optionsHide {
+    font-size: 0;
+    padding: 0.6rem 0.45rem;
+  }
+
+  #optionsHide::after {
+    content: "▼";
+    font-size: 1rem;
   }
 
   .drag-trigger {
