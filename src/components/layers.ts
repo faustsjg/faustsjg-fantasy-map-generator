@@ -27,6 +27,7 @@ import { drawReligions } from "@/renderers/draw-religions";
 import { drawRivers } from "@/renderers/draw-rivers";
 import { drawRoutes, removeRoutes } from "@/renderers/draw-routes";
 import { drawScaleBar, removeScaleBar } from "@/renderers/draw-scalebar";
+import { drawSatelliteImage } from "@/renderers/draw-satellite-image";
 import { drawStates } from "@/renderers/draw-states";
 import { drawTemperature } from "@/renderers/draw-temperature";
 import { drawTexture } from "@/renderers/draw-texture";
@@ -274,6 +275,10 @@ const mapLayers = [
     erase: removeOcean
   }),
   new Layer({ id: "landmass", parent: "viewbox", permanent: true, keepContent: true, draw: drawLandmass }),
+  // photorealistic top-down bake (erosion + satellite shader, see
+  // draw-satellite-image.ts), an alternative to heightmap/biomes used by the
+  // Satellite layers preset
+  new Layer({ id: "satelliteImage", parent: "viewbox", draw: drawSatelliteImage }),
   new Layer({ id: "texture", element: "texture", parent: "viewbox", draw: drawTexture }),
   new Layer({
     id: "heightmap",

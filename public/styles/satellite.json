@@ -13,10 +13,9 @@
     "filter": null
   },
   "#biomes": {
-    "opacity": 0.18,
+    "opacity": null,
     "filter": null,
-    "mask": "url(#land)",
-    "style": "mix-blend-mode: multiply"
+    "mask": "url(#land)"
   },
   "#stateBorders": {
     "opacity": 0,
@@ -121,24 +120,24 @@
     "stroke": "#ff0000"
   },
   "#freshwater": {
-    "opacity": 0.9,
-    "fill": "#1f5f7a",
-    "stroke": "#123a54",
-    "stroke-width": 0,
+    "opacity": 0.5,
+    "fill": "#a6c1fd",
+    "stroke": "#5f799d",
+    "stroke-width": 0.7,
     "filter": null
   },
   "#salt": {
-    "opacity": 0.9,
-    "fill": "#164f5c",
-    "stroke": "#0f3a45",
-    "stroke-width": 0,
+    "opacity": 0.5,
+    "fill": "#409b8a",
+    "stroke": "#388985",
+    "stroke-width": 0.7,
     "filter": null
   },
   "#sinkhole": {
     "opacity": 1,
-    "fill": "#2f6f85",
-    "stroke": "#123a54",
-    "stroke-width": 0,
+    "fill": "#5bc9fd",
+    "stroke": "#53a3b0",
+    "stroke-width": 0.7,
     "filter": null
   },
   "#frozen": {
@@ -157,23 +156,23 @@
   },
   "#dry": {
     "opacity": 1,
-    "fill": "#b8a878",
-    "stroke": "#968962",
-    "stroke-width": 0,
+    "fill": "#c9bfa7",
+    "stroke": "#8e816f",
+    "stroke-width": 0.7,
     "filter": null
   },
   "#sea_island": {
-    "opacity": 0.4,
-    "stroke": "#c9bd8e",
-    "stroke-width": 1.2,
-    "filter": "url(#blur1)",
+    "opacity": 0,
+    "stroke": "#1f3846",
+    "stroke-width": 0.5,
+    "filter": null,
     "auto-filter": 1
   },
   "#lake_island": {
-    "opacity": 0.35,
-    "stroke": "#a8c0c8",
-    "stroke-width": 0.6,
-    "filter": "url(#blur1)"
+    "opacity": 0,
+    "stroke": "#7c8eaf",
+    "stroke-width": 0.35,
+    "filter": null
   },
   "#terrain": {
     "opacity": 0,
@@ -186,7 +185,7 @@
   "#rivers": {
     "opacity": null,
     "filter": null,
-    "fill": "#2f6f85"
+    "fill": "#5d97bb"
   },
   "#ruler": {
     "opacity": null,
@@ -254,10 +253,10 @@
   },
   "#ice": {
     "opacity": 0.9,
-    "fill": "#e4eef2",
-    "stroke": "#d4e2e8",
+    "fill": "#f1f8fe",
+    "stroke": "#e8f0f6",
     "stroke-width": 0.5,
-    "filter": "url(#satelliteRelief)"
+    "filter": "url(#dropShadow01)"
   },
   "#emblems": {
     "opacity": 0,
@@ -292,19 +291,19 @@
   },
   "#oceanLayers": {
     "filter": null,
-    "layers": "-9,-6,-3,-1"
+    "layers": "-6,-3,-1"
   },
   "#oceanBase": {
-    "fill": "#05141f"
+    "fill": "#466eab"
   },
   "#oceanicPattern": {
     "href": "./images/pattern1.png",
-    "opacity": 0
+    "opacity": 0.2
   },
   "#terrs > #oceanHeights": {
-    "data-render": 1,
+    "data-render": 0,
     "opacity": 1,
-    "scheme": "#4a8a92,#2f6f85,#1f5f7a,#123a54,#0a2338,#05141f",
+    "scheme": "bright",
     "terracing": 0,
     "skip": 0,
     "relax": 1,
@@ -314,12 +313,12 @@
   },
   "#terrs > #landHeights": {
     "opacity": 1,
-    "scheme": "#b8a878,#7c8f52,#546b3a,#3d4f2b,#5c5448,#7a7268,#d8d8d0",
+    "scheme": "bright",
     "terracing": 0,
-    "skip": 2,
+    "skip": 5,
     "relax": 0,
     "curve": "curveBasisClosed",
-    "filter": "url(#satelliteRelief)",
+    "filter": null,
     "mask": "url(#land)"
   },
   "#legend": {

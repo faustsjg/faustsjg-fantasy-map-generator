@@ -586,6 +586,14 @@ export function disposeSatelliteTexture(): void {
   }
 }
 
+// the render target behind the last generateSatelliteTexture() call, needed
+// to read its pixels back (readRenderTargetPixels takes the target, not the
+// texture) - used to bake a flat top-down image for the 2D map's Satellite
+// layer, independent of the interactive 3D scene
+export function getLastSatelliteRenderTarget(): THREEType.WebGLRenderTarget | null {
+  return renderTarget;
+}
+
 const FLOW_WAVELENGTH = 10; // map units per flow animation cycle
 let flowTexture: THREEType.Texture | null = null;
 

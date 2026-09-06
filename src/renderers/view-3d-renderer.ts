@@ -15,11 +15,11 @@ import {
 } from "./draw-satellite-texture";
 import * as ErosionBake from "./erosion-bake";
 import { getGroupStyle } from "./labels/label-groups";
+import { loadTHREE as loadThreeLib } from "./load-three";
 
 export { heightAt, isCached } from "./erosion-bake";
 
 let Three!: typeof import("three");
-let threeLoadPromise: Promise<boolean> | null = null;
 
 type Controls = {
   dispose: () => void;
@@ -1151,22 +1151,11 @@ function applyWaterAnimation(mat: THREE.MeshLambertMaterial, flowTexture: THREE.
   };
 }
 
-function loadTHREE() {
-  if (Three) return Promise.resolve(true);
-  if (!threeLoadPromise) {
-    threeLoadPromise = new Promise(resolve => {
-      const script = document.createElement("script");
-      script.src = "libs/three.min.js";
-      document.head.append(script);
-      script.onload = () => {
-        Three = window.THREE as unknown as typeof import("three");
-        resolve(true);
-      };
-      script.onerror = () => resolve(false);
-    });
-  }
-
-  return threeLoadPromise;
+async function loadTHREE(): Promise<boolean> {
+  if (Three) return true;
+  const loaded = await loadThreeLib();
+  if (loaded) Three = window.THREE as unknown as typeof import("three");
+  return loaded;
 }
 
 function loadLoopSubdivision() {
