@@ -4,15 +4,25 @@
 // shader is a fullscreen-triangle pass, purely a function of grid/pack data,
 // so it's already a flat top-down bake. Generated once per map (cached by
 // mapId), then displayed as a plain <image>.
-import * as ErosionBake from "./erosion-bake";
-import { disposeSatelliteTexture, generateSatelliteTexture, getLastSatelliteRenderTarget } from "./draw-satellite-texture";
-import { loadTHREE } from "./load-three";
-import { createEl, ensureEl } from "../utils/nodeUtils";
-import { tip } from "../components/tooltips";
 
-const BAKE_PARAMS: ErosionBake.BakeParams = { strength: 30, riverDepth: 10, octaves: 2, bakeResolution: 1024 };
+import { tip } from "../components/tooltips";
+import { createEl, ensureEl } from "../utils/nodeUtils";
+import {
+  disposeSatelliteTexture,
+  generateSatelliteTexture,
+  getLastSatelliteRenderTarget
+} from "./draw-satellite-texture";
+import * as ErosionBake from "./erosion-bake";
+import { loadTHREE } from "./load-three";
+
+// higher than the 3D view's own defaults (1024/4096): this is a one-time
+// bake shown at full opacity with no mesh/camera overhead to share the frame
+// budget with, so it can afford the extra detail. maxOutput is capped at 2x
+// bakeResolution's long side by generateSatelliteTexture(), so both need to
+// go up together for the output to actually sharpen rather than just upscale
+const BAKE_PARAMS: ErosionBake.BakeParams = { strength: 30, riverDepth: 10, octaves: 2, bakeResolution: 2048 };
 const HEIGHT_SCALE = 50; // matches the 3D view's default "Height scale"
-const MAX_OUTPUT = 2048;
+const MAX_OUTPUT = 4096;
 
 let cachedDataUrl: string | null = null;
 let cachedMapId: number | null = null;
