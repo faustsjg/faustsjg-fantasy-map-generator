@@ -139,11 +139,24 @@ function validateLine(
   return { tool, a2: String(Math.min(Math.max(factor, 0), 10)), a3: "0", a4: "0", a5: "0" };
 }
 
+// Models told "output only the DSL, no markdown fences" still add them
+// often enough that this is worth handling directly rather than losing every
+// line in a response to it: strip ``` fence lines and a leading bullet/
+// numbering marker some models use for a "list" of instructions instead of
+// bare lines.
+const FENCE_LINE = /^```\w*$/;
+const LIST_PREFIX = /^(?:[-*•]|\d+[.)])\s+/;
+
+function stripWrapping(line: string): string {
+  return line.replace(LIST_PREFIX, "");
+}
+
 export function parseTerrainDsl(text: string, bounds: TerrainBounds): ParsedTerrainDsl {
   const allLines = text
     .split("\n")
     .map(line => line.trim())
-    .filter(Boolean);
+    .filter(line => line && !FENCE_LINE.test(line))
+    .map(stripWrapping);
 
   const rejected: RejectedLine[] = [];
   const consideredLines = allLines.slice(0, MAX_LINES);
@@ -153,13 +166,17 @@ export function parseTerrainDsl(text: string, bounds: TerrainBounds): ParsedTerr
 
   const steps: TerrainStep[] = [];
   for (const line of consideredLines) {
-    const tokens = line.split(/\s+/);
-    if (tokens.length !== 5) {
+    const allTokens = line.split(/\s+/);
+    if (allTokens.length < 5) {
       rejected.push({ line, reason: "expected 5 fields: tool count height rangeX rangeY" });
       continue;
     }
 
-    const [tool, a2, a3, a4, a5] = tokens;
+    // a model that ignores "output only the DSL" often appends a trailing
+    // comment on the same line instead of a separate one - the first 5
+    // fields are still a complete, valid instruction, so use those rather
+    // than rejecting the whole line over trailing text
+    const [tool, a2, a3, a4, a5] = allTokens;
     if (!(TERRAIN_TOOLS as readonly string[]).includes(tool)) {
       rejected.push({ line, reason: `unknown tool "${tool}"` });
       continue;

@@ -60,7 +60,12 @@ Tools: Hill, Pit, Range, Trough, Strait, Mask, Invert, Add, Multiply, Smooth.
 - Invert: "Invert probability axes 0 0" where axes is "both", "x", or "y".
 - Add/Multiply: "Add amount selector 0 0" where selector is "all", "land", or a height range like "50-100".
 
-Output ONLY the DSL lines, nothing else — no explanation, no markdown fences. At most 10 lines.
+There is no dedicated sea/lake/bay tool: land is height >= 20, water is below
+it, so carve one out with Pit (a low height, e.g. "Pit 1 5-15 rangeX rangeY")
+or lower an area with Multiply/Add and a height-range selector below 20.
+
+Output ONLY the DSL lines, nothing else — no explanation, no markdown code
+fences, no commentary before or after. At most 10 lines.
 
 Describe what terrain you want here, e.g. "a narrow strait like the Bosphorus" or "a sea like the Aegean, with many small islands":
 `;

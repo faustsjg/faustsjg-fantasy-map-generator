@@ -114,6 +114,25 @@ describe("parseTerrainDsl", () => {
     const { steps } = parseTerrainDsl("\n  Hill 1 90 45-55 45-55  \n\n", bounds);
     expect(steps).toHaveLength(1);
   });
+
+  it("strips markdown code fence lines instead of rejecting them", () => {
+    const { steps, rejected } = parseTerrainDsl("```\nHill 1 90 45-55 45-55\n```", bounds);
+    expect(steps).toHaveLength(1);
+    expect(rejected).toEqual([]);
+  });
+
+  it("strips a leading bullet or numbered-list marker before parsing a line", () => {
+    const { steps } = parseTerrainDsl("- Hill 1 90 45-55 45-55\n2) Smooth 3 0 0 0", bounds);
+    expect(steps).toHaveLength(2);
+    expect(steps[0].tool).toBe("Hill");
+    expect(steps[1].tool).toBe("Smooth");
+  });
+
+  it("uses the first 5 fields of a line that has a trailing comment", () => {
+    const { steps, rejected } = parseTerrainDsl("Hill 1 90 40-50 30-40 // a central hill", bounds);
+    expect(rejected).toEqual([]);
+    expect(steps).toEqual([{ tool: "Hill", a2: "1", a3: "90", a4: "40-50", a5: "30-40" }]);
+  });
 });
 
 describe("formatTerrainDsl", () => {
