@@ -62,6 +62,17 @@ function restoreCustomPresets(): void {
   }
 }
 
+/**
+ * Switch to a preset's layer set without surfacing it in the "Layers preset"
+ * dropdown or persisting it to localStorage - for presets driven entirely by
+ * something else (the "satellite" style preset picks its own layers this
+ * way; see style-presets.js), where a second, redundant selector in the
+ * Layers tab would just be UI noise.
+ */
+export function applyUnlistedPreset(name: string): void {
+  if (name in presets) Layers.set(presets[name]);
+}
+
 /** run on map generation: the layers are drawn right after, so the state is applied without drawing */
 export function applyLayersPreset(): void {
   const stored = localStorage.getItem("preset") || ensureEl<HTMLSelectElement>("layersPreset").value;
@@ -181,8 +192,10 @@ declare global {
   interface Window {
     applyLayersPreset: typeof applyLayersPreset;
     applyURLLayers: typeof applyURLLayers;
+    applyUnlistedPreset: typeof applyUnlistedPreset;
   }
 }
 
 window.applyLayersPreset = applyLayersPreset;
 window.applyURLLayers = applyURLLayers;
+window.applyUnlistedPreset = applyUnlistedPreset;

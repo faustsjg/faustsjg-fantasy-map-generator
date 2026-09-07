@@ -184,14 +184,11 @@ async function changeStyle(desiredPreset) {
   localStorage.setItem("presetStyle", presetName);
   applyStyleWithUiRefresh(style);
 
-  // the "satellite" style only looks right with its matching layer set
-  // (elevation shading, no borders/labels/grid) — switch to it too, the same
-  // way picking it from the Layers preset dropdown would
-  const layersPreset = document.getElementById("layersPreset");
-  if (presetName === "satellite" && layersPreset.value !== "satellite") {
-    layersPreset.value = "satellite";
-    layersPreset.dispatchEvent(new Event("change"));
-  }
+  // the "satellite" style only looks right with its matching layer set (the
+  // baked photorealistic image, no borders/labels/grid) — switch to it too.
+  // Not surfaced as its own "Layers preset" dropdown entry: this style is
+  // the only way to reach it, so a second selector would just be redundant.
+  if (presetName === "satellite") applyUnlistedPreset("satellite");
 }
 
 function applyStyleWithUiRefresh(style) {
