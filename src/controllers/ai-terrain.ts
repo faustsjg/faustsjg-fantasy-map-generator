@@ -45,11 +45,15 @@ function onMapClick(event: MouseEvent): void {
   const bounds = boundsAroundPoint(xPercent, yPercent);
 
   stop();
-  void Controllers.AiGenerator.open(buildPrompt(bounds), result => onApply(result, bounds));
+  void Controllers.AiGenerator.open({
+    instructions: buildInstructions(bounds),
+    placeholder: 'Describe the terrain, e.g. "a narrow strait like the Bosphorus" or "a bigger sea in the middle, like the Aegean"',
+    onApply: result => onApply(result, bounds)
+  });
 }
 
-function buildPrompt(bounds: TerrainBounds): string {
-  return `You are writing lines for the Fantasy Map Generator's heightmap DSL — not a natural-language description, not code, just these lines.
+function buildInstructions(bounds: TerrainBounds): string {
+  return `You are writing lines for the Fantasy Map Generator's heightmap DSL — not a natural-language description, not code, just these lines. The next message describes what terrain is wanted; translate it into DSL, nothing else.
 
 Format: one instruction per line, exactly 5 space-separated fields: "Tool count height rangeX rangeY".
 Tools: Hill, Pit, Range, Trough, Strait, Mask, Invert, Add, Multiply, Smooth.
@@ -64,11 +68,10 @@ There is no dedicated sea/lake/bay tool: land is height >= 20, water is below
 it, so carve one out with Pit (a low height, e.g. "Pit 1 5-15 rangeX rangeY")
 or lower an area with Multiply/Add and a height-range selector below 20.
 
-Output ONLY the DSL lines, nothing else — no explanation, no markdown code
-fences, no commentary before or after. At most 10 lines.
-
-Describe what terrain you want here, e.g. "a narrow strait like the Bosphorus" or "a sea like the Aegean, with many small islands":
-`;
+Output ONLY the DSL lines, nothing else — no explanation, no restating the
+request, no markdown code fences, no commentary before or after any line.
+Every line must start with one of the exact tool names above. At most 10
+lines.`;
 }
 
 function onApply(result: string, bounds: TerrainBounds): void {

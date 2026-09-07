@@ -234,7 +234,7 @@ function openAiGenerator(): void {
     }
   };
 
-  void Controllers.AiGenerator.open(prompt, onApply);
+  void Controllers.AiGenerator.open({ defaultPrompt: prompt, onApply });
 }
 
 function downloadLegends(): void {

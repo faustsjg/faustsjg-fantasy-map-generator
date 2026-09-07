@@ -39,7 +39,7 @@ function onMapClick(event: MouseEvent): void {
 
   const cultureName = pack.cultures[state.culture]?.name ?? "unknown";
   const prompt = buildLorePrompt(state.name, cultureName, options.year);
-  void Controllers.AiGenerator.open(prompt, result => onApply(result, state));
+  void Controllers.AiGenerator.open({ defaultPrompt: prompt, onApply: result => onApply(result, state) });
 }
 
 function onApply(result: string, state: State): void {

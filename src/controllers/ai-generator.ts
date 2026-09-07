@@ -1,7 +1,7 @@
 import { destroyDialog } from "@/components/dialog/dialog-helpers";
 import { tip } from "@/components/tooltips";
 import { openURL } from "@/utils";
-import { ensureEl } from "../utils";
+import { ensureEl, findEl } from "../utils";
 
 type Provider = "openai" | "anthropic" | "ollama";
 
@@ -183,9 +183,20 @@ async function handleStream(response: Response, getContent: (json: StreamChunk) 
   }
 }
 
-function open(defaultPrompt: string, onApply: (result: string) => void): void {
-  renderDialog();
+interface OpenParams {
+  // fixed text always sent ahead of the user's prompt, shown read-only so it
+  // can't be edited away by mistake - required format rules (like AI
+  // Terrain's DSL syntax) belong here, not in the editable textarea
+  instructions?: string;
+  defaultPrompt?: string;
+  placeholder?: string;
+  onApply: (result: string) => void;
+}
+
+function open({ instructions, defaultPrompt = "", placeholder, onApply }: OpenParams): void {
+  renderDialog(instructions);
   setInitialValues(defaultPrompt);
+  if (placeholder) ensureEl<HTMLTextAreaElement>("aiGeneratorPrompt").placeholder = placeholder;
 
   $("#aiGenerator").dialog({
     title: "AI Text Generator",
@@ -209,12 +220,21 @@ function open(defaultPrompt: string, onApply: (result: string) => void): void {
   });
 }
 
-function renderDialog(): void {
+function renderDialog(instructions?: string): void {
   destroyDialog("aiGenerator");
+
+  const instructionsHtml = instructions
+    ? /* html */ `<div
+        id="aiGeneratorInstructions"
+        data-tip="Sent to the AI ahead of your prompt below, exactly as shown. Not editable: it's required formatting the result depends on"
+        style="font-size: 0.85em; color: var(--dark-solid); background: var(--bg-light); border: 1px solid var(--dark-solid); border-radius: 3px; padding: 0.4em; max-height: 6em; overflow-y: auto; white-space: pre-wrap"
+      >${instructions.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</div>`
+    : "";
 
   const html = /* html */ `<div id="aiGenerator" class="dialog stable">
     <div style="display: flex; flex-direction: column; gap: 0.3em; width: 100%">
       <textarea id="aiGeneratorResult" placeholder="Generated text will appear here" cols="30" rows="10"></textarea>
+      ${instructionsHtml}
       <textarea id="aiGeneratorPrompt" placeholder="Type a prompt here" cols="30" rows="5"></textarea>
       <div style="display: flex; align-items: center; gap: 1em">
         <label for="aiGeneratorModel"
@@ -282,8 +302,10 @@ async function generate(button: HTMLButtonElement): Promise<void> {
   const provider = MODELS[model];
   localStorage.setItem(`fmg-ai-kl-${provider}`, key);
 
-  const prompt = ensureEl<HTMLTextAreaElement>("aiGeneratorPrompt").value;
-  if (!prompt) return tip("Please enter a prompt", true, "error", 4000);
+  const userPrompt = ensureEl<HTMLTextAreaElement>("aiGeneratorPrompt").value;
+  if (!userPrompt) return tip("Please enter a prompt", true, "error", 4000);
+  const instructions = findEl("aiGeneratorInstructions")?.textContent;
+  const prompt = instructions ? `${instructions}\n\n${userPrompt}` : userPrompt;
 
   const temperature = ensureEl<HTMLInputElement>("aiGeneratorTemperature").valueAsNumber;
   if (Number.isNaN(temperature)) return tip("Temperature must be a number", true, "error", 4000);
