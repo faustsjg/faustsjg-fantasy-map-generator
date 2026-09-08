@@ -179,6 +179,8 @@ function requestStylePresetChange(preset) {
 }
 
 async function changeStyle(desiredPreset) {
+  const previousPreset = localStorage.getItem("presetStyle");
+
   const styleData = await getStylePreset(desiredPreset);
   const [presetName, style] = styleData;
   localStorage.setItem("presetStyle", presetName);
@@ -188,7 +190,14 @@ async function changeStyle(desiredPreset) {
   // baked photorealistic image, no borders/labels/grid) — switch to it too.
   // Not surfaced as its own "Layers preset" dropdown entry: this style is
   // the only way to reach it, so a second selector would just be redundant.
-  if (presetName === "satellite") applyUnlistedPreset("satellite");
+  if (presetName === "satellite") {
+    applyUnlistedPreset("satellite");
+  } else if (previousPreset === "satellite") {
+    // leaving satellite: applyUnlistedPreset() never touched the user's real
+    // layers-preset choice (stored separately under localStorage["preset"]),
+    // so restore it now instead of leaving the satellite layer set behind
+    window.applyLayersPreset();
+  }
 }
 
 function applyStyleWithUiRefresh(style) {

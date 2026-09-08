@@ -18,7 +18,7 @@
     "mask": "url(#land)"
   },
   "#stateBorders": {
-    "opacity": 0,
+    "opacity": null,
     "stroke": "#56566d",
     "stroke-width": 1,
     "stroke-dasharray": 2,
@@ -26,7 +26,7 @@
     "filter": null
   },
   "#provinceBorders": {
-    "opacity": 0,
+    "opacity": null,
     "stroke": "#56566d",
     "stroke-width": 0.12,
     "stroke-dasharray": "0.75 0.75",
@@ -41,7 +41,7 @@
     "mask": null
   },
   "#gridOverlay": {
-    "opacity": 0,
+    "opacity": null,
     "scale": 1,
     "dx": 0,
     "dy": 0,
@@ -55,7 +55,7 @@
     "mask": null
   },
   "#coordinates": {
-    "opacity": 0,
+    "opacity": null,
     "data-size": 12,
     "font-size": 12,
     "stroke": "#d4d4d4",
@@ -66,7 +66,7 @@
     "mask": null
   },
   "#compass": {
-    "opacity": 0,
+    "opacity": null,
     "transform": null,
     "filter": null,
     "mask": "url(#water)",
@@ -76,13 +76,13 @@
     "transform": "translate(80 80) scale(0.25)"
   },
   "#relig": {
-    "opacity": 0,
+    "opacity": null,
     "stroke": "#777777",
     "stroke-width": 0,
     "filter": null
   },
   "#cults": {
-    "opacity": 0,
+    "opacity": null,
     "stroke": "#777777",
     "stroke-width": 0.5,
     "stroke-dasharray": null,
@@ -95,19 +95,19 @@
     "filter": null
   },
   "#markers": {
-    "opacity": 0,
+    "opacity": null,
     "rescale": 1,
     "filter": null
   },
   "#prec": {
-    "opacity": 0,
+    "opacity": null,
     "stroke": "#000000",
     "stroke-width": 0,
     "fill": "#003dff",
     "filter": null
   },
   "#population": {
-    "opacity": 0,
+    "opacity": null,
     "stroke-width": 1.6,
     "stroke-dasharray": null,
     "stroke-linecap": "butt",
@@ -175,7 +175,7 @@
     "filter": null
   },
   "#terrain": {
-    "opacity": 0,
+    "opacity": null,
     "set": "simple",
     "size": 1,
     "density": 0.4,
@@ -224,24 +224,24 @@
     "mask": null
   },
   "#statesBody": {
-    "opacity": 0,
+    "opacity": null,
     "filter": null
   },
   "#statesHalo": {
-    "opacity": 0,
+    "opacity": null,
     "data-width": 10,
     "stroke-width": 10,
     "filter": "blur(3.5px)"
   },
   "#provs": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#000000",
     "font-size": 10,
     "font-family": "Georgia",
     "filter": null
   },
   "#temperature": {
-    "opacity": 0,
+    "opacity": null,
     "font-size": "8px",
     "fill": "#000000",
     "fill-opacity": 0.3,
@@ -259,7 +259,7 @@
     "filter": "url(#dropShadow01)"
   },
   "#emblems": {
-    "opacity": 0,
+    "opacity": null,
     "stroke-width": 1,
     "filter": null
   },
@@ -273,7 +273,7 @@
     "data-size": 1
   },
   "#texture": {
-    "opacity": 0,
+    "opacity": null,
     "filter": null,
     "mask": "url(#land)",
     "data-x": 0,
@@ -281,7 +281,7 @@
     "data-href": "./images/textures/marble-big.jpg"
   },
   "#zones": {
-    "opacity": 0,
+    "opacity": null,
     "stroke": "#333333",
     "stroke-width": 0,
     "stroke-dasharray": null,
@@ -334,7 +334,7 @@
     "data-columns": 8
   },
   "#labels > #capital": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "style": "text-shadow: white 0px 0px 4px",
     "letter-spacing": 0,
@@ -362,7 +362,7 @@
     "stroke-width": 1.2
   },
   "#labels > #city": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "style": "text-shadow: white 0px 0px 4px",
     "letter-spacing": 0,
@@ -390,7 +390,7 @@
     "stroke-width": 1.2
   },
   "#labels > #fort": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "style": "text-shadow: white 0px 0px 4px",
     "letter-spacing": 0,
@@ -418,7 +418,7 @@
     "stroke-width": 1.2
   },
   "#labels > #monastery": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "style": "text-shadow: white 0px 0px 4px",
     "letter-spacing": 0,
@@ -446,7 +446,7 @@
     "stroke-width": 1.2
   },
   "#labels > #caravanserai": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "style": "text-shadow: white 0px 0px 4px",
     "letter-spacing": 0,
@@ -474,7 +474,7 @@
     "stroke-width": 1.2
   },
   "#labels > #trading_post": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "style": "text-shadow: white 0px 0px 4px",
     "letter-spacing": 0,
@@ -502,7 +502,7 @@
     "stroke-width": 1.2
   },
   "#labels > #village": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "style": "text-shadow: white 0px 0px 4px",
     "letter-spacing": 0,
@@ -530,7 +530,7 @@
     "stroke-width": 1.2
   },
   "#labels > #hamlet": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "style": "text-shadow: white 0px 0px 4px",
     "letter-spacing": 0,
@@ -558,7 +558,7 @@
     "stroke-width": 1.2
   },
   "#labels > #town": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "style": "text-shadow: white 0px 0px 4px",
     "letter-spacing": 0,
@@ -586,7 +586,7 @@
     "stroke-width": 1.2
   },
   "#labels > #state": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "stroke": "#3a3a3a",
     "stroke-width": 0,
@@ -597,7 +597,7 @@
     "filter": null
   },
   "#labels > #province": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "stroke": "#3a3a3a",
     "stroke-width": 0,
@@ -608,7 +608,7 @@
     "filter": null
   },
   "#labels > #route": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "stroke-width": 0,
     "style": "text-shadow: white 0px 1px 6px",
@@ -618,7 +618,7 @@
     "filter": null
   },
   "#labels > #river": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "stroke-width": 0,
     "style": "text-shadow: white 0px 1px 6px",
@@ -628,7 +628,7 @@
     "filter": null
   },
   "#labels > #added": {
-    "opacity": 0,
+    "opacity": null,
     "fill": "#3e3e4b",
     "stroke": "#3a3a3a",
     "stroke-width": 0,
@@ -678,11 +678,11 @@
     "data-left": 10
   },
   "#goodsCells": {
-    "opacity": 0,
+    "opacity": null,
     "filter": null
   },
   "#markets": {
-    "opacity": 0,
+    "opacity": null,
     "stroke-width": 1,
     "fill-opacity": 0.03,
     "stroke-opacity": 0.8,
@@ -692,20 +692,20 @@
     "filter": null
   },
   "#goodsIcons": {
-    "opacity": 0,
+    "opacity": null,
     "stroke-width": 0.3,
     "data-circle": 1,
     "data-size": 6,
     "filter": "url(#dropShadow01)"
   },
   "#goodsBurgs": {
-    "opacity": 0,
+    "opacity": null,
     "stroke": "#41414f",
     "stroke-width": 0.2,
     "data-size": 3
   },
   "#tradeAnimation": {
-    "opacity": 0,
+    "opacity": null,
     "filter": null
   }
 }

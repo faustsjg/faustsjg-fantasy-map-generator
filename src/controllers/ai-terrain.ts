@@ -47,7 +47,8 @@ function onMapClick(event: MouseEvent): void {
   stop();
   void Controllers.AiGenerator.open({
     instructions: buildInstructions(bounds),
-    placeholder: 'Describe the terrain, e.g. "a narrow strait like the Bosphorus" or "a bigger sea in the middle, like the Aegean"',
+    placeholder:
+      'Describe the terrain, e.g. "a narrow strait like the Bosphorus" or "a bigger sea in the middle, like the Aegean"',
     onApply: result => onApply(result, bounds)
   });
 }
