@@ -1,4 +1,4 @@
-import { type Selection, select } from "d3";
+import { select } from "d3";
 import { closeDialogs, confirmationDialog, destroyDialog } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
 import { clearMainTip, tip } from "@/components/tooltips";
@@ -14,7 +14,9 @@ import type { PromptOptions } from "../utils/commonUtils";
 
 declare const prompt: (text: string, options: PromptOptions, callback: (value: string | number) => void) => void;
 
-let selected: Selection<any, any, any, any> | null = null;
+// the id the editor was opened for: not a DOM lookup, since the burg's icon and label are only
+// materialized when it's inside the viewport and may not be at editor-open time
+let selectedId = 0;
 let previewTransform: PanZoom = { ...PAN_ZOOM_IDENTITY };
 let previewMaxZoom = MAX_ZOOM;
 let previewCommittedK = 1;
@@ -26,8 +28,7 @@ function open(id: number | string): void {
   closeDialogs(".stable");
   Layers.show("burgIcons", "labels");
 
-  selected = select<any, unknown>("#labels").select(`[data-label-type='burg'][data-id='${id}']`);
-  if (!selected.size()) selected = select<any, unknown>("#burgIcons").select(`[data-id='${id}']`);
+  selectedId = Number(id);
 
   renderDialog();
   updateGroupsList();
@@ -276,7 +277,7 @@ function renderDialog(): void {
 }
 
 function getSelectedId(): number {
-  return +selected!.attr("data-id");
+  return selectedId;
 }
 
 function updateGroupsList(): void {
@@ -505,9 +506,8 @@ function hideStyleSection(): void {
 }
 
 function editGroupLabelStyle(): void {
-  const g = (selected!.node() as Element).parentNode as HTMLElement;
   closeDialogs(".stable");
-  editStyle("labels", g.id);
+  editStyle("labels", pack.burgs[getSelectedId()].group);
 }
 
 function editBurgLabel(): void {
@@ -517,15 +517,13 @@ function editBurgLabel(): void {
 }
 
 function editGroupIconStyle(): void {
-  const g = (selected!.node() as Element).parentNode as HTMLElement;
   closeDialogs(".stable");
-  editStyle("burgIcons", g.id);
+  editStyle("burgIcons", pack.burgs[getSelectedId()].group);
 }
 
 function editGroupAnchorStyle(): void {
-  const g = (selected!.node() as Element).parentNode as HTMLElement;
   closeDialogs(".stable");
-  editStyle("anchors", g.id);
+  editStyle("anchors", pack.burgs[getSelectedId()].group);
 }
 
 function getPreviewViewport(): { width: number; height: number } {
@@ -780,14 +778,12 @@ function relocateBurgOnClick(this: SVGGElement, event: any): void {
 }
 
 function editBurgLegend(): void {
-  const id = selected!.attr("data-id");
-  const name = selected!.text();
-  void Controllers.NotesEditor.open(`burg${id}`, name);
+  const id = getSelectedId();
+  void Controllers.NotesEditor.open(`burg${id}`, pack.burgs[id].name);
 }
 
 function showTemperatureGraph(): void {
-  const id = +selected!.attr("data-id");
-  void Controllers.TemperatureGraph.open(id);
+  void Controllers.TemperatureGraph.open(getSelectedId());
 }
 
 function showProductionOverview(): void {
@@ -842,7 +838,6 @@ function editBurgGroups(): void {
 
 function closeBurgEditor(): void {
   if (ensureEl("burgRelocate").classList.contains("pressed")) toggleRelocateBurg();
-  selected = null;
   $("#burgEditor").dialog("destroy");
   ensureEl("burgEditor").remove();
 }
