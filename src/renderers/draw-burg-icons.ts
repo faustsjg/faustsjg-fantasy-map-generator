@@ -87,16 +87,19 @@ function reconcileBurgIcons(context: ViewportRenderContext): void {
     const iconsGroup = root.querySelector<SVGGElement>(`#burgIcons > g#${CSS.escape(name)}`);
     if (!iconsGroup) continue;
 
-    const visible = [...scene.values()]
-      .map(item => item.data)
-      .filter(b => b.group === name && isVisible(b, bounds));
+    const visible = [...scene.values()].map(item => item.data).filter(b => b.group === name && isVisible(b, bounds));
 
     const icon = iconsGroup.dataset.icon || "#icon-circle";
     reconcileGroup(iconsGroup, "burg", visible, icon);
 
     const portGroup = root.querySelector<SVGGElement>(`#anchors > g#${CSS.escape(name)}`);
     if (!portGroup) continue;
-    reconcileGroup(portGroup, "anchor", visible.filter(b => b.port), "#icon-anchor");
+    reconcileGroup(
+      portGroup,
+      "anchor",
+      visible.filter(b => b.port),
+      "#icon-anchor"
+    );
   }
 }
 
@@ -110,7 +113,9 @@ function reconcileGroup(group: SVGGElement, prefix: "burg" | "anchor", burgs: Bu
   if (missing.length) {
     group.insertAdjacentHTML(
       "beforeend",
-      missing.map(b => `<use id="${prefix}${b.i}" data-id="${b.i}" href="${href}" x="${b.x}" y="${b.y}"></use>`).join("")
+      missing
+        .map(b => `<use id="${prefix}${b.i}" data-id="${b.i}" href="${href}" x="${b.x}" y="${b.y}"></use>`)
+        .join("")
     );
   }
 }

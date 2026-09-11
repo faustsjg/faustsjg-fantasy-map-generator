@@ -64,6 +64,40 @@ function makeBurgs() {
 
 // ---------------------------------------------------------------------------
 
+describe("getCultureSpacingModifier", () => {
+  let getCultureSpacingModifier: (typeof import("./burgs-generator"))["getCultureSpacingModifier"];
+
+  beforeEach(async () => {
+    globalThis.window = globalThis.window || ({} as any);
+    const module = await import("./burgs-generator");
+    getCultureSpacingModifier = module.getCultureSpacingModifier;
+  });
+
+  it("applies no adjustment for the Generic type", () => {
+    expect(getCultureSpacingModifier("Generic")).toBe(1);
+  });
+
+  it("spaces nomadic settlements further apart than default", () => {
+    expect(getCultureSpacingModifier("Nomadic")).toBeGreaterThan(1);
+  });
+
+  it("clusters water-dependent cultures (naval, river, lake) closer together than default", () => {
+    expect(getCultureSpacingModifier("Naval")).toBeLessThan(1);
+    expect(getCultureSpacingModifier("River")).toBeLessThan(1);
+    expect(getCultureSpacingModifier("Lake")).toBeLessThan(1);
+  });
+
+  it("pulls highland and hunting cultures apart, but less than nomads", () => {
+    const highland = getCultureSpacingModifier("Highland");
+    const hunting = getCultureSpacingModifier("Hunting");
+    const nomadic = getCultureSpacingModifier("Nomadic");
+    expect(highland).toBeGreaterThan(1);
+    expect(hunting).toBeGreaterThan(1);
+    expect(highland).toBeLessThan(nomadic);
+    expect(hunting).toBeLessThan(nomadic);
+  });
+});
+
 describe("BurgsModule.assignPorts — open-lake port promotion", () => {
   let Burgs: any;
 

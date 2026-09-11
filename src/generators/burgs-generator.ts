@@ -51,6 +51,23 @@ type PortCandidate = {
   preferred: boolean; // safe harbour, capital harbour, or river port — promoted unconditionally
 };
 
+// How much a settlement's minimum spacing from its neighbors is scaled by the character of
+// its culture during town placement: naval/river/lake cultures cluster along the water they
+// depend on, nomadic cultures spread out, hunting/highland cultures fall in between. A culture
+// type missing here (Generic) gets no adjustment.
+const CULTURE_SPACING_MODIFIERS: Partial<Record<CultureType, number>> = {
+  Naval: 0.7,
+  River: 0.6,
+  Lake: 0.8,
+  Highland: 1.2,
+  Hunting: 1.3,
+  Nomadic: 1.5
+};
+
+export function getCultureSpacingModifier(type: CultureType): number {
+  return CULTURE_SPACING_MODIFIERS[type] ?? 1;
+}
+
 class BurgModule {
   generate() {
     const { cells } = pack;
@@ -119,11 +136,13 @@ class BurgModule {
           const cell = sorted[i];
           const [x, y] = cells.p[cell];
 
-          const minSpacing = spacing * gauss(1, 0.3, 0.2, 2, 2); // randomize to make placement not uniform
+          const culture = cells.culture[cell];
+          const cultureType = pack.cultures[culture]?.type ?? DEFAULT_CULTURE_TYPE;
+          const spacingModifier = getCultureSpacingModifier(cultureType);
+          const minSpacing = spacing * spacingModifier * gauss(1, 0.3, 0.2, 2, 2); // randomize to make placement not uniform
           if (burgsQuadtree.find(x, y, minSpacing) !== undefined) continue; // to close to existing burg
 
           const burgId = burgs.length;
-          const culture = cells.culture[cell];
           const name = Names.getCulture(culture);
           const feature = cells.f[cell];
           burgs.push({
@@ -814,7 +833,9 @@ class BurgModule {
       const id = newBurgs.length;
       const cell = sorted[index];
       const [x, y] = cells.p[cell];
-      const minDistance = spacing * gauss(1, 0.3, 0.2, 2, 2);
+      const culture = cells.culture[cell];
+      const cultureType = pack.cultures[culture]?.type ?? DEFAULT_CULTURE_TYPE;
+      const minDistance = spacing * getCultureSpacingModifier(cultureType) * gauss(1, 0.3, 0.2, 2, 2);
       if (burgsTree.find(x, y, minDistance) !== undefined) continue;
 
       const stateId = cells.state[cell];
@@ -824,7 +845,6 @@ class BurgModule {
         states[stateId].center = cell;
       }
 
-      const culture = cells.culture[cell];
       const name = Names.getCulture(culture);
       newBurgs.push({ cell, x, y, state: stateId, i: id, culture, name, capital, feature: cells.f[cell] });
       burgsTree.add([x, y]);
