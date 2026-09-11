@@ -65,7 +65,7 @@ function makeBurgs() {
 // ---------------------------------------------------------------------------
 
 describe("getCultureSpacingModifier", () => {
-  let getCultureSpacingModifier: (typeof import("./burgs-generator"))["getCultureSpacingModifier"];
+  let getCultureSpacingModifier: typeof import("./burgs-generator")["getCultureSpacingModifier"];
 
   beforeEach(async () => {
     globalThis.window = globalThis.window || ({} as any);

@@ -185,16 +185,23 @@ function populateMarkerTypeMenu(): void {
   const types = [{ type: "empty", icon: "❓" }, ...Markers.getConfig()];
   types.forEach(({ icon, type }) => {
     const option = document.createElement("button");
-    option.textContent = `${icon} ${type}`;
+    option.innerHTML = `${iconHtml(icon)} ${type}`;
     menu.appendChild(option);
 
     option.addEventListener("click", () => {
-      ensureEl("markerTypeSelector").textContent = icon;
+      ensureEl("markerTypeSelector").innerHTML = iconHtml(icon);
       ensureEl<HTMLInputElement>("addedMarkerType").value = type;
       changeMarkerType();
       toggleMarkerTypeMenu();
     });
   });
+}
+
+/** An uploaded image/URL icon needs an <img>; anything else (an emoji) is fine as text */
+function iconHtml(icon: string): string {
+  return icon.startsWith("http") || icon.startsWith("data:image")
+    ? `<img src="${icon}" style="width:1.2em; height:1.2em; vertical-align: middle;">`
+    : icon;
 }
 
 function handleLineClick(ev: MouseEvent): void {
