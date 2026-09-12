@@ -3,6 +3,7 @@ import { Layers } from "@/components/layers";
 import { tip } from "@/components/tooltips";
 import { Controllers } from "@/controllers";
 import { Emblems } from "@/generators/emblems-generator";
+import { Guilds } from "@/generators/guilds-generator";
 import { Population } from "@/generators/population-generator";
 import { unfog } from "@/renderers/overlays/fogging";
 import { ensureEl, gauss, isCtrlClick } from "@/utils";
@@ -40,6 +41,7 @@ ensureEl("toolsContent").addEventListener("click", event => {
   else if (buttonId === "overviewLabelsButton") void Controllers.LabelsOverview.open();
   else if (buttonId === "overviewMarkersButton") void Controllers.MarkersOverview.open();
   else if (buttonId === "overviewMarketsButton") void Controllers.MarketsOverview.open();
+  else if (buttonId === "overviewGuildsButton") void Controllers.GuildsOverview.open();
   else if (buttonId === "overviewCellsButton") void Controllers.CellInfo.open();
   else if (buttonId === "openMinimapButton") void Controllers.Minimap.open();
   else if (buttonId === "configRegenerateMarkers") void Controllers.MarkersSettings.open();
@@ -99,6 +101,7 @@ function regenerate(event: MouseEvent, button: string): void {
   else if (button === "regenerateProvinces") regenerateProvinces();
   else if (button === "regenerateBurgs") regenerateBurgs();
   else if (button === "regenerateGoods") regenerateGoods();
+  else if (button === "regenerateGuilds") regenerateGuilds();
   else if (button === "regenerateMarkets") regenerateMarkets();
   else if (button === "regenerateEconomy") regenerateEconomy();
   else if (button === "regenerateProduction") regenerateProduction();
@@ -163,6 +166,10 @@ function regenerateBurgs(): void {
 function regenerateGoods(): void {
   Goods.regenerate();
   Layers.draw("goods");
+}
+
+function regenerateGuilds(): void {
+  Guilds.regenerate();
 }
 
 function regenerateMarkets(): void {

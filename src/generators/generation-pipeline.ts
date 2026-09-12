@@ -1,4 +1,5 @@
 // Canonical generation sequence, as a declared pipeline instead of a hand-written call list. See docs/architecture/generation-pipeline.md.
+import { Guilds } from "@/generators/guilds-generator";
 import { Pipeline, type PipelineStep } from "@/generators/pipeline";
 import { Population } from "@/generators/population-generator";
 import type { GridGraph } from "@/types/GridGraph";
@@ -38,6 +39,7 @@ const generationPipelineSteps = [
   { id: "lakeNames", run: () => Lakes.defineNames() },
   { id: "markets", run: () => Markets.generate() },
   { id: "production", run: () => Production.produce() },
+  { id: "guilds", run: () => Guilds.generate() },
   { id: "taxes", run: () => States.collectTaxes() },
   { id: "military", run: () => Military.generate() },
   { id: "markers", run: () => Markers.generate() },
@@ -86,6 +88,7 @@ const erasePipelineSteps = [
   { id: "lakeNames", run: () => Lakes.defineNames() },
   { id: "markets", run: () => Markets.generate() },
   { id: "production", run: () => Production.produce() },
+  { id: "guilds", run: () => Guilds.generate() },
   { id: "taxes", run: () => States.collectTaxes() },
   { id: "military", run: () => Military.generate() },
   { id: "markers", run: () => Markers.generate() },

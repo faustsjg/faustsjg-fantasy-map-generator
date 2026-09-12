@@ -4,6 +4,7 @@ import { Layers } from "@/components/layers";
 import { clearMainTip, tip } from "@/components/tooltips";
 import { applyDefaultViewboxEvents } from "@/components/viewbox-events";
 import { GraphOverride } from "@/generators/graph-override";
+import { Guilds } from "@/generators/guilds-generator";
 import { invalidateEmblems } from "@/renderers/draw-emblems";
 import { clearLegend } from "@/renderers/draw-legend";
 import { Services } from "@/services";
@@ -408,6 +409,7 @@ async function parseLoadedData(data: string[], mapVersion: string | null): Promi
     pack.relief = data[49] ? JSON.parse(data[49]) : [];
     pack.eras = data[52] ? JSON.parse(data[52]) : [];
     pack.aiTerrainEdits = data[53] ? JSON.parse(data[53]) : [];
+    Guilds.generate(); // derived from burg production, not stored in the save format
 
     if (data[31]) {
       const namesDL = data[31].split("/");

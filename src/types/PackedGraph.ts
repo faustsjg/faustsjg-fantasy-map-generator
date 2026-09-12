@@ -5,6 +5,7 @@ import type { Culture } from "@/generators/cultures-generator";
 import type { Era } from "@/generators/eras-generator";
 import type { Feature } from "@/generators/features";
 import type { Good } from "@/generators/goods-generator";
+import type { Guild } from "@/generators/guilds-generator";
 import type { Ice } from "@/generators/ice-generator";
 import type { Marker } from "@/generators/markers-generator";
 import type { Deal, Market } from "@/generators/markets-generator";
@@ -76,4 +77,5 @@ export interface PackedGraph {
   addedLabels: AddedLabel[];
   eras?: Era[];
   aiTerrainEdits?: string[];
+  guilds?: Guild[];
 }
