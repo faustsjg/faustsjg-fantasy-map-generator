@@ -363,6 +363,15 @@ i.icon-lock {
   fill: none;
 }
 
+#terrainInfluenceBox {
+  stroke: #373737;
+  stroke-width: 1.5px;
+  stroke-dasharray: 7;
+  stroke-linecap: butt;
+  fill: none;
+  pointer-events: none;
+}
+
 text.drag {
   text-shadow: 0 0 1px red;
 }

@@ -1,23 +1,39 @@
-import { pointer } from "d3";
+import { pointer, select } from "d3";
 import { refreshEditors } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
 import { stopMapPlacement, toggleMapPlacement } from "@/components/map-placement";
 import { tip } from "@/components/tooltips";
 import { Controllers } from "@/controllers";
 import { formatTerrainDsl, parseTerrainDsl, type TerrainBounds } from "@/generators/terrain-dsl";
-import { findEl, minmax } from "../utils";
+import { moveInfluenceBox, removeInfluenceBox } from "@/renderers/overlays/terrain-influence-box";
+import { ensureEl, findEl, minmax } from "../utils";
+
+const RADIUS_STORAGE_KEY = "fmg-ai-terrain-radius";
+const DEFAULT_RADIUS_PERCENT = 12;
+const MIN_RADIUS_PERCENT = 2;
+const MAX_RADIUS_PERCENT = 40;
 
 // How far, in % of map width/height, the clicked point's editable window
 // extends in each direction — this is what "the ranges come from wherever
 // the user clicked" means in practice: the AI can only place terrain inside
-// this window, whatever coordinates it writes into the DSL.
-const CLICK_RADIUS_PERCENT = 12;
+// this window, whatever coordinates it writes into the DSL. User-adjustable
+// via the cog icon next to the AI Terrain button, persisted across sessions.
+function getRadiusPercent(): number {
+  const stored = Number(localStorage.getItem(RADIUS_STORAGE_KEY));
+  return stored >= MIN_RADIUS_PERCENT && stored <= MAX_RADIUS_PERCENT ? stored : DEFAULT_RADIUS_PERCENT;
+}
+
+function setRadiusPercent(value: number): void {
+  localStorage.setItem(RADIUS_STORAGE_KEY, String(minmax(value, MIN_RADIUS_PERCENT, MAX_RADIUS_PERCENT)));
+}
 
 // stopMapPlacement() only clears .pressed off buttons inside #addFeature;
 // this button lives in the general Tools list, so it must unpress itself.
 function stop(): void {
   stopMapPlacement();
   findEl("addAiTerrain")?.classList.remove("pressed");
+  select("#viewbox").on("mousemove.aiTerrainPreview", null);
+  removeInfluenceBox();
 }
 
 function toggle(): void {
@@ -26,15 +42,28 @@ function toggle(): void {
     return;
   }
 
-  toggleMapPlacement("addAiTerrain", onMapClick, "Click on the map to pick where the AI-generated terrain appears");
+  const started = toggleMapPlacement(
+    "addAiTerrain",
+    onMapClick,
+    "Click on the map to pick where the AI-generated terrain appears"
+  );
+  if (started) select<SVGGElement, unknown>("#viewbox").on("mousemove.aiTerrainPreview", previewInfluenceArea);
+}
+
+function previewInfluenceArea(event: MouseEvent): void {
+  const point = pointer(event, event.currentTarget as SVGGElement);
+  const xPercent = (point[0] / graphWidth) * 100;
+  const yPercent = (point[1] / graphHeight) * 100;
+  moveInfluenceBox(boundsAroundPoint(xPercent, yPercent));
 }
 
 function boundsAroundPoint(xPercent: number, yPercent: number): TerrainBounds {
+  const radius = getRadiusPercent();
   return {
-    xMin: Math.round(minmax(xPercent - CLICK_RADIUS_PERCENT, 0, 100)),
-    xMax: Math.round(minmax(xPercent + CLICK_RADIUS_PERCENT, 0, 100)),
-    yMin: Math.round(minmax(yPercent - CLICK_RADIUS_PERCENT, 0, 100)),
-    yMax: Math.round(minmax(yPercent + CLICK_RADIUS_PERCENT, 0, 100))
+    xMin: Math.round(minmax(xPercent - radius, 0, 100)),
+    xMax: Math.round(minmax(xPercent + radius, 0, 100)),
+    yMin: Math.round(minmax(yPercent - radius, 0, 100)),
+    yMax: Math.round(minmax(yPercent + radius, 0, 100))
   };
 }
 
@@ -50,6 +79,41 @@ function onMapClick(event: MouseEvent): void {
     placeholder:
       'Describe the terrain, e.g. "a narrow strait like the Bosphorus" or "a bigger sea in the middle, like the Aegean"',
     onApply: result => onApply(result, bounds)
+  });
+}
+
+function openSettings(): void {
+  const dialogId = "aiTerrainSettings";
+  document.getElementById(dialogId)?.remove();
+
+  const radius = getRadiusPercent();
+  const html = /* html */ `<div id="${dialogId}" class="dialog">
+    <div data-tip="How far, in % of map width/height, the AI can place terrain from where you click">
+      <i>Influence radius:</i>
+      <input id="aiTerrainRadiusInput" type="range" min="${MIN_RADIUS_PERCENT}" max="${MAX_RADIUS_PERCENT}" value="${radius}" />
+      <output id="aiTerrainRadiusOutput">${radius}%</output>
+    </div>
+  </div>`;
+  ensureEl("dialogs").insertAdjacentHTML("beforeend", html);
+
+  ensureEl<HTMLInputElement>("aiTerrainRadiusInput").addEventListener("input", function (this: HTMLInputElement) {
+    setRadiusPercent(+this.value);
+    ensureEl("aiTerrainRadiusOutput").innerHTML = `${this.value}%`;
+  });
+
+  $(`#${dialogId}`).dialog({
+    resizable: false,
+    title: "AI Terrain settings",
+    position: { my: "left top", at: "left+10 top+10", of: "svg", collision: "fit" },
+    buttons: {
+      Close: function () {
+        $(this).dialog("close");
+      }
+    },
+    close: function () {
+      $(this).dialog("destroy");
+      document.getElementById(dialogId)?.remove();
+    }
   });
 }
 
@@ -109,4 +173,4 @@ function onApply(result: string, bounds: TerrainBounds): void {
   tip(message, true, "success", 6000);
 }
 
-export const AiTerrain = { toggle };
+export const AiTerrain = { toggle, openSettings };

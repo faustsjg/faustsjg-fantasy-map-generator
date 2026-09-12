@@ -51,6 +51,7 @@ ensureEl("toolsContent").addEventListener("click", event => {
   else if (buttonId === "addRoute") void Controllers.RouteCreator.open();
   else if (buttonId === "addMarker") void Controllers.MarkerCreator.toggle();
   else if (buttonId === "addAiTerrain") void Controllers.AiTerrain.toggle();
+  else if (buttonId === "configAiTerrain") void Controllers.AiTerrain.openSettings();
   else if (buttonId === "addAiLore") void Controllers.AiLore.toggle();
   else if (buttonId === "openSubmapTool") void Controllers.SubmapTool.open();
   else if (buttonId === "openTransformTool") void Controllers.TransformTool.open();
