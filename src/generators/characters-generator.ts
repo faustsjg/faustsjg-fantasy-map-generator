@@ -1,6 +1,9 @@
-// Named individuals living in the world: rulers, guild masters, and ordinary people known for
-// something small - worldbuilding texture, not adventure hooks or quest-givers.
-import { ra } from "@/utils";
+// Named individuals living in the world: rulers, provincial nobles, guild masters, and ordinary
+// people known for something small - worldbuilding texture, not adventure hooks or quest-givers.
+// Titles, dynasties and family ties are all derived procedurally from the existing state/province
+// data (form, diplomacy) - nothing here is AI-generated. Only the on-demand bio (characters-overview.ts)
+// calls out to the AI generator, and only when a user clicks for it.
+import { P, ra } from "@/utils";
 import type { Burg } from "./burgs-generator";
 import type { State } from "./states-generator";
 
@@ -11,12 +14,17 @@ export interface Character {
   culture: number;
   role: string;
   importance: "notable" | "common";
+  dynasty?: string; // house name, notable characters only
+  spouse?: string;
+  children?: string[];
+  liege?: number; // index into pack.characters of this character's overlord, if any
   bio?: string; // filled in on demand via the AI generator, not at generation time
   removed?: boolean;
 }
 
-// State.formName is a rich, long tail (Kingdom, Khanate, Shogunate, Beylik...); only the common
-// ones get a dedicated ruler title, everything else falls back to "Ruler".
+// State.formName is a rich, long tail (Kingdom, Khanate, Shogunate, Beylik...); every form the
+// states generator can produce gets a matching title here, so rank varies with real state power
+// and vassal status instead of everyone defaulting to "King".
 const RULER_TITLES: Record<string, string> = {
   Empire: "Emperor",
   Kingdom: "King",
@@ -27,6 +35,7 @@ const RULER_TITLES: Record<string, string> = {
   Theocracy: "High Priest",
   Union: "Chancellor",
   Khanate: "Khan",
+  Khaganate: "Khagan",
   Horde: "Khan",
   Ulus: "Khan",
   Tsardom: "Tsar",
@@ -35,7 +44,73 @@ const RULER_TITLES: Record<string, string> = {
   Emirate: "Emir",
   Despotate: "Despot",
   Satrapy: "Satrap",
-  Beylik: "Bey"
+  Beylik: "Bey",
+  Federation: "Federal Chairman",
+  "Trade Company": "Company Director",
+  "Most Serene Republic": "Doge",
+  Oligarchy: "Archon",
+  Tetrarchy: "Tetrarch",
+  Triumvirate: "Triumvir",
+  Diarchy: "Co-Regent",
+  Junta: "Junta Leader",
+  League: "League Speaker",
+  Confederation: "Confederate Chairman",
+  "United Kingdom": "King",
+  "United Republic": "President",
+  "United Provinces": "Stadtholder",
+  Commonwealth: "Lord Protector",
+  Heptarchy: "High King",
+  Brotherhood: "Grand Master",
+  Thearchy: "Thearch",
+  See: "Bishop",
+  "Holy State": "High Priest",
+  Diocese: "Bishop",
+  Bishopric: "Bishop",
+  Eparchy: "Eparch",
+  Exarchate: "Exarch",
+  Patriarchate: "Patriarch",
+  Imamah: "Imam",
+  "Free Territory": "Elder",
+  Council: "Council Speaker",
+  Commune: "Commune Elder",
+  Community: "Community Elder",
+  Marches: "Marquess",
+  Dominion: "Governor-General",
+  Protectorate: "Lord Protector",
+  "Free City": "Lord Mayor",
+  "City-state": "Archon"
+};
+
+// Province.formName ranks below its state's form (a County inside a Kingdom, a Barony inside a
+// Duchy...), giving the mid-tier nobility the vassalage chain needs.
+const PROVINCE_TITLES: Record<string, string> = {
+  County: "Count",
+  Earldom: "Earl",
+  Shire: "Reeve",
+  Landgrave: "Landgrave",
+  Margrave: "Margrave",
+  Barony: "Baron",
+  Captaincy: "Captain",
+  Seneschalty: "Seneschal",
+  Province: "Governor",
+  Department: "Prefect",
+  Governorate: "Governor",
+  District: "District Governor",
+  Canton: "Canton Chief",
+  Prefecture: "Prefect",
+  Parish: "Vicar",
+  Deanery: "Dean",
+  State: "Governor",
+  Council: "Councilor",
+  Commune: "Commune Elder",
+  Community: "Community Elder",
+  Tribe: "Chieftain",
+  Territory: "Territorial Governor",
+  Land: "Warden",
+  Region: "Warden",
+  Clan: "Clan Chief",
+  Dependency: "Governor",
+  Area: "Warden"
 };
 
 // Ordinary people worth naming without inventing a plot for them - just part of the world
@@ -62,23 +137,61 @@ export const COMMONER_ARCHETYPES = [
   "the Potter"
 ];
 
+interface NobleSeed {
+  burg: number;
+  culture: number;
+  role: string;
+}
+
 class CharactersModule {
   generate(): void {
     const characters: Character[] = [];
+    const rulerByState = new Map<number, number>(); // state.i -> character index
 
     for (const state of pack.states) {
       if (!state.i || state.removed) continue;
       const capital = pack.burgs[state.capital];
       if (!capital || !capital.i || capital.removed) continue;
 
-      characters.push({
-        i: characters.length,
-        name: Names.getCulture(state.culture),
-        burg: capital.i,
-        culture: state.culture,
-        role: `${this.getRulerTitle(state)} of ${state.name}`,
-        importance: "notable"
-      });
+      const index = characters.length;
+      characters.push(
+        this.createNoble(index, {
+          burg: capital.i,
+          culture: state.culture,
+          role: `${this.getRulerTitle(state.formName)} of ${state.name}`
+        })
+      );
+      rulerByState.set(state.i, index);
+    }
+
+    // a vassal state's rank comes from its suzerain - link the ruler characters the same way
+    for (const state of pack.states) {
+      if (!state.i || state.removed) continue;
+      const rulerIndex = rulerByState.get(state.i);
+      if (rulerIndex === undefined) continue;
+
+      const suzerainIndex = this.getSuzerainStateIndex(state);
+      const liegeIndex = suzerainIndex === undefined ? undefined : rulerByState.get(suzerainIndex);
+      if (liegeIndex !== undefined) characters[rulerIndex].liege = liegeIndex;
+    }
+
+    for (const province of pack.provinces ?? []) {
+      if (!province.i || province.removed) continue;
+      const burg = pack.burgs[province.burg];
+      if (!burg || !burg.i || burg.removed) continue;
+
+      const culture = burg.culture ?? pack.states[province.state]?.culture ?? 0;
+      const index = characters.length;
+      characters.push(
+        this.createNoble(index, {
+          burg: burg.i,
+          culture,
+          role: `${this.getProvinceTitle(province.formName)} of ${province.name}`
+        })
+      );
+
+      const liegeIndex = rulerByState.get(province.state);
+      if (liegeIndex !== undefined) characters[index].liege = liegeIndex;
     }
 
     for (const guild of pack.guilds ?? []) {
@@ -86,14 +199,13 @@ class CharactersModule {
       const burg = pack.burgs[guild.burg];
       if (!burg || !burg.i || burg.removed) continue;
 
-      characters.push({
-        i: characters.length,
-        name: Names.getCulture(guild.culture),
-        burg: guild.burg,
-        culture: guild.culture,
-        role: `${guild.craft} Guild Master`,
-        importance: "notable"
-      });
+      characters.push(
+        this.createNoble(characters.length, {
+          burg: guild.burg,
+          culture: guild.culture,
+          role: `${guild.craft} Guild Master`
+        })
+      );
     }
 
     for (const burg of pack.burgs) {
@@ -119,8 +231,51 @@ class CharactersModule {
     this.generate();
   }
 
-  private getRulerTitle(state: State): string {
-    return RULER_TITLES[state.formName ?? ""] || "Ruler";
+  // states[f].diplomacy[t] records the role f plays toward t; a state with "Vassal" somewhere in
+  // its own array plays that role toward whichever state sits at that index - its suzerain
+  private getSuzerainStateIndex(state: State): number | undefined {
+    const suzerainIndex = state.diplomacy?.indexOf("Vassal") ?? -1;
+    return suzerainIndex > 0 ? suzerainIndex : undefined;
+  }
+
+  private createNoble(index: number, seed: NobleSeed): Character {
+    return {
+      i: index,
+      name: Names.getCulture(seed.culture),
+      burg: seed.burg,
+      culture: seed.culture,
+      role: seed.role,
+      importance: "notable",
+      dynasty: `House of ${Names.getCultureShort(seed.culture)}`,
+      ...this.getFamily(seed.culture)
+    };
+  }
+
+  // a lightweight family snapshot, not a simulated lineage - most nobles have a spouse and a
+  // handful of children, some don't
+  private getFamily(culture: number): { spouse?: string; children?: string[] } {
+    if (!P(0.85)) return {};
+
+    const spouse = Names.getCulture(culture);
+    const childrenCount = ra([0, 1, 1, 2, 2, 3]);
+    if (!childrenCount) return { spouse };
+
+    const children = Array.from({ length: childrenCount }, () => Names.getCulture(culture));
+    return { spouse, children };
+  }
+
+  private getRulerTitle(formName?: string): string {
+    if (!formName) return "Ruler";
+    if (formName.startsWith("Divine ")) {
+      const base = formName.slice("Divine ".length);
+      return `Divine ${RULER_TITLES[base] ?? "Ruler"}`;
+    }
+    return RULER_TITLES[formName] ?? "Ruler";
+  }
+
+  private getProvinceTitle(formName?: string): string {
+    if (!formName) return "Governor";
+    return PROVINCE_TITLES[formName] ?? "Governor";
   }
 
   // bigger burgs support more people worth naming; small hamlets get none

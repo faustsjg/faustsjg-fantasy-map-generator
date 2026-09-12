@@ -13,7 +13,10 @@ describe("CharactersModule.generate", () => {
   let Characters: any;
 
   beforeEach(async () => {
-    globalThis.Names = { getCulture: (culture: number) => `Person-${culture}` } as any;
+    globalThis.Names = {
+      getCulture: (culture: number) => `Person-${culture}`,
+      getCultureShort: (culture: number) => `Short-${culture}`
+    } as any;
     const module = await import("./characters-generator");
     Characters = module.Characters;
   });
@@ -32,6 +35,47 @@ describe("CharactersModule.generate", () => {
     expect(rulers[0].role).toBe("King of Testland");
     expect(rulers[0].burg).toBe(1);
     expect(rulers[0].importance).toBe("notable");
+    expect(rulers[0].dynasty).toBe("House of Short-1");
+    expect(rulers[0].liege).toBeUndefined();
+  });
+
+  it("links a vassal state's ruler to its suzerain's ruler as liege", () => {
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, diplomacy: ["x", "x", "Suzerain"] }),
+        makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, diplomacy: ["x", "Vassal", "x"] })
+      ],
+      guilds: [],
+      provinces: [],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.generate();
+    const king = globalThis.pack.characters!.find((c: any) => c.role === "King of Kingland");
+    const duke = globalThis.pack.characters!.find((c: any) => c.role === "Duke of Dukeland");
+    expect(king).toBeDefined();
+    expect(duke).toBeDefined();
+    expect(duke!.liege).toBe(king!.i);
+    expect(king!.liege).toBeUndefined();
+  });
+
+  it("creates a provincial noble tied to its state's ruler as liege", () => {
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Kingdom", capital: 1, diplomacy: ["x", "x"] })],
+      guilds: [],
+      provinces: [0 as any, { i: 1, state: 1, burg: 1, name: "Testshire", formName: "County", removed: false }],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.generate();
+    const king = globalThis.pack.characters!.find((c: any) => c.role === "King of Testland");
+    const noble = globalThis.pack.characters!.find((c: any) => c.role === "Count of Testshire");
+    expect(noble).toBeDefined();
+    expect(noble!.importance).toBe("notable");
+    expect(noble!.liege).toBe(king!.i);
   });
 
   it("falls back to a generic 'Ruler' title for an unmapped state form", () => {
@@ -98,6 +142,7 @@ describe("CharactersModule.generate", () => {
     for (const commoner of commoners) {
       expect(COMMONER_ARCHETYPES).toContain(commoner.role);
       expect(commoner.burg).toBe(1);
+      expect(commoner.dynasty).toBeUndefined();
     }
   });
 });

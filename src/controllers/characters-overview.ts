@@ -35,6 +35,8 @@ const columns: EditorColumn<Character>[] = [
     sortType: "alpha"
   },
   { key: "name", label: "Name", width: "9em", permanent: true, sortBy: character => character.name, sortType: "alpha" },
+  { key: "dynasty", label: "Dynasty", width: "10em", sortBy: character => character.dynasty ?? "", sortType: "alpha" },
+  { key: "liege", label: "Liege", width: "9em", sortBy: character => getLiegeName(character), sortType: "alpha" },
   { key: "burg", label: "Burg", width: "9em", sortBy: character => getBurgName(character), sortType: "alpha" },
   {
     key: "culture",
@@ -127,6 +129,17 @@ function getCultureName(character: Character): string {
   return pack.cultures[character.culture]?.name ?? "";
 }
 
+function getLiegeName(character: Character): string {
+  if (character.liege === undefined) return "";
+  return pack.characters?.[character.liege]?.name ?? "";
+}
+
+function getLiegeLabel(character: Character): string {
+  if (character.liege === undefined) return "Independent";
+  const liege = pack.characters?.[character.liege];
+  return liege ? `${liege.name}, ${liege.role}` : "Independent";
+}
+
 function renderCharactersPage(view: TableView<Character>): void {
   const lines = view.rows.map(renderCharacterLine).join("");
   ensureEl("charactersOverviewBody").innerHTML = lines || "No characters recorded";
@@ -141,6 +154,8 @@ function renderCharacterLine(character: Character): string {
       <div data-col="importance">${character.importance}</div>
       <div data-col="role">${character.role}</div>
       <div data-col="name">${character.name}</div>
+      <div data-col="dynasty">${character.dynasty ?? ""}</div>
+      <div data-col="liege" data-tip="${getLiegeLabel(character)}">${getLiegeName(character) || "—"}</div>
       <div data-col="burg" class="pointer" data-tip="Click to zoom">${getBurgName(character)}</div>
       <div data-col="culture">${getCultureName(character)}</div>
       <div data-col="actions" class="characterBio pointer" data-tip="${bioTip}">
@@ -162,11 +177,20 @@ function generateBio(character: Character): void {
 function buildBioPrompt(character: Character): string {
   const burgName = getBurgName(character) || "an unnamed settlement";
   const cultureName = getCultureName(character) || "an unknown";
-  return `Write a short biography (3-5 sentences) for ${character.name}, ${character.role}, who lives in ${burgName}. They are of ${cultureName} culture. Keep it grounded and mundane: an ordinary, believable life - no quests, no prophecies, no epic destiny. Plain text, no markdown, no headings.`;
+  const dynasty = character.dynasty ? ` of ${character.dynasty}` : "";
+  const liegeName = getLiegeName(character);
+  const fealty = liegeName ? ` They answer to ${liegeName}.` : "";
+  const family =
+    character.spouse || character.children?.length
+      ? ` They are married to ${character.spouse ?? "someone from another house"}${
+          character.children?.length ? ` and have ${character.children.length} children` : ""
+        }.`
+      : "";
+  return `Write a short biography (3-5 sentences) for ${character.name}${dynasty}, ${character.role}, who lives in ${burgName}. They are of ${cultureName} culture.${fealty}${family} Keep it grounded and mundane: an ordinary, believable life - no quests, no prophecies, no epic destiny. Plain text, no markdown, no headings.`;
 }
 
 function downloadCharactersCsv(): void {
-  let csv = "Id,Importance,Role,Name,Burg,Culture,Bio\n";
+  let csv = "Id,Importance,Role,Name,Dynasty,Liege,Spouse,Children,Burg,Culture,Bio\n";
   for (const character of pack.characters ?? []) {
     if (character.removed) continue;
     csv += [
@@ -174,6 +198,10 @@ function downloadCharactersCsv(): void {
       character.importance,
       character.role,
       character.name,
+      character.dynasty ?? "",
+      getLiegeName(character),
+      character.spouse ?? "",
+      `"${(character.children ?? []).join("; ")}"`,
       getBurgName(character),
       getCultureName(character),
       `"${(character.bio ?? "").replace(/"/g, '""')}"`
