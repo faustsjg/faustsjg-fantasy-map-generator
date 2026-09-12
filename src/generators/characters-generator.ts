@@ -411,7 +411,8 @@ class CharactersModule {
 
     province.removed = true;
     survivor.fullName = `${survivor.fullName} (united with ${originalName})`;
-    characters[survivorNobleIndex].role = `${characters[survivorNobleIndex].role}, uniting the county of ${originalName}`;
+    characters[survivorNobleIndex].role =
+      `${characters[survivorNobleIndex].role}, uniting the county of ${originalName}`;
   }
 
   private createRuler(index: number, state: State, capital: Burg): Character {
