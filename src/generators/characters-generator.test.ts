@@ -80,6 +80,51 @@ describe("CharactersModule.generate", () => {
     expect(king!.liege).toBeUndefined();
   });
 
+  it("forms a marriage alliance between two rulers when the roll succeeds", () => {
+    Math.random = () => 0; // marriage roll always succeeds
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, diplomacy: ["x", "x", "x"] }),
+        makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, diplomacy: ["x", "x", "x"] })
+      ],
+      guilds: [],
+      provinces: [],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.generate();
+    const king = globalThis.pack.characters!.find((c: any) => c.role === "King of Kingland");
+    const duke = globalThis.pack.characters!.find((c: any) => c.role === "Duke of Dukeland");
+    expect(duke!.spouseState).toBe(king!.state);
+    expect(king!.spouseState).toBe(duke!.state);
+    expect(duke!.spouse).toBe(king!.name);
+    expect(king!.spouse).toBe(duke!.name);
+  });
+
+  it("does not form a marriage alliance when the roll fails", () => {
+    Math.random = () => 0.99; // marriage roll always fails
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, diplomacy: ["x", "x", "x"] }),
+        makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, diplomacy: ["x", "x", "x"] })
+      ],
+      guilds: [],
+      provinces: [],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.generate();
+    for (const character of globalThis.pack.characters!) {
+      expect(character.spouseState).toBeUndefined();
+    }
+  });
+
   it("creates a provincial noble tied to its state's ruler as liege", () => {
     Math.random = () => 0.99; // never triggers founder-naming, keeps the province's own name
 
@@ -323,5 +368,63 @@ describe("CharactersModule.applySuccession", () => {
     Characters.applySuccession(20);
     const ruler = globalThis.pack.characters!.find((c: any) => c.state === 1);
     expect(ruler!.liege).toBeUndefined();
+  });
+
+  it("merges a childless dynasty into its spouse's crown on succession", () => {
+    Math.random = () => 0; // succession always triggers for both states
+
+    const priorA = makePriorRuler({
+      i: 0,
+      name: "RulerA",
+      burg: 1,
+      role: "King of Kingland",
+      dynasty: "House A",
+      state: 1,
+      spouse: "RulerB",
+      spouseState: 2,
+      children: undefined // no heir - this line goes extinct, but it's married into state 2
+    });
+    const priorB = {
+      i: 1,
+      name: "RulerB",
+      burg: 2,
+      culture: 1,
+      role: "Duke of Dukeland",
+      importance: "notable",
+      dynasty: "House B",
+      state: 2,
+      spouse: "RulerA",
+      spouseState: 1,
+      children: ["BHeir"] // has its own heir - never goes extinct
+    };
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1, state: 1 }), makeBurg({ i: 2, state: 2 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, lock: true, diplomacy: ["x", "x", "x"] }),
+        makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, lock: true, diplomacy: ["x", "x", "x"] })
+      ],
+      guilds: [],
+      provinces: [],
+      characters: [priorA, priorB],
+      cells: { i: [0, 1, 2, 3], state: [0, 1, 1, 2] },
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    expect(globalThis.pack.states[1].removed).toBe(true);
+    expect(globalThis.pack.states[2].removed).toBeFalsy();
+    expect(globalThis.pack.states[2].fullName).toContain("united with Kingland");
+    expect(Array.from(globalThis.pack.cells.state)).toEqual([0, 2, 2, 2]);
+    expect(globalThis.pack.burgs[1].state).toBe(2);
+
+    const survivorRuler = globalThis.pack.characters!.find((c: any) => c.state === 2 && !c.removed);
+    expect(survivorRuler!.name).toBe("BHeir");
+    expect(survivorRuler!.role).toContain("uniting the crown of Kingland");
+
+    const stillClaimsState1 = globalThis.pack.characters!.some((c: any) => c.state === 1 && !c.removed);
+    expect(stillClaimsState1).toBe(false);
   });
 });

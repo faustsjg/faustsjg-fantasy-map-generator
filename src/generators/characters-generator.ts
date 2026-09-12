@@ -21,6 +21,7 @@ export interface Character {
   liege?: number; // index into pack.characters of this character's overlord, if any
   state?: number; // for a ruler: the state.i they rule - lets Eras find them again next era
   province?: number; // for a provincial noble: the province.i they govern, same reason
+  spouseState?: number; // for a ruler married into another crown: that state's i
   bio?: string; // filled in on demand via the AI generator, not at generation time
   removed?: boolean;
 }
@@ -155,6 +156,10 @@ const FOUNDER_NAMING_CHANCE = 0.3;
 // length: a 20-year era is likely to see one change of ruler, a 5-year one usually won't
 const AVERAGE_REIGN_YEARS = 25;
 
+// chance a ruler marries into another crown rather than an anonymous spouse - real crowns, so a
+// childless death can merge the two realms (Aragon+Catalonia, Castile+Aragon, England+Scotland...)
+const MARRIAGE_ALLIANCE_CHANCE = 0.15;
+
 class CharactersModule {
   generate(): void {
     const characters: Character[] = [];
@@ -166,7 +171,9 @@ class CharactersModule {
       if (!capital || !capital.i || capital.removed) continue;
 
       const index = characters.length;
-      characters.push(this.createRuler(index, state, capital));
+      const ruler = this.createRuler(index, state, capital);
+      this.tryFormMarriageAlliance(ruler, rulerByState, characters);
+      characters.push(ruler);
       rulerByState.set(state.i, index);
     }
     this.linkStateLieges(characters, rulerByState);
@@ -205,6 +212,7 @@ class CharactersModule {
 
     const characters: Character[] = [];
     const rulerByState = new Map<number, number>();
+    const extinctions: { state: State; prior: Character }[] = [];
 
     for (const state of pack.states) {
       if (!state.i || state.removed) continue;
@@ -214,14 +222,23 @@ class CharactersModule {
       const index = characters.length;
       const prior = state.lock ? priorRulerByState.get(state.i) : undefined;
       const role = `${this.getRulerTitle(state.formName)} of ${state.name}`;
-      characters.push(
-        prior
-          ? (this.succeed(index, prior, capital.i, role, successionChance) ?? this.createRuler(index, state, capital))
-          : this.createRuler(index, state, capital)
-      );
+
+      let ruler = prior ? this.succeed(index, prior, capital.i, role, successionChance) : undefined;
+      if (prior && !ruler) extinctions.push({ state, prior });
+      if (!ruler) {
+        ruler = this.createRuler(index, state, capital);
+        this.tryFormMarriageAlliance(ruler, rulerByState, characters);
+      }
+
+      characters.push(ruler);
       rulerByState.set(state.i, index);
     }
     this.linkStateLieges(characters, rulerByState);
+
+    // a childless ruler married into another crown doesn't end their line - the crowns merge
+    for (const { state, prior } of extinctions) {
+      this.resolveMarriageMerge(state, prior, characters, rulerByState);
+    }
 
     for (const province of pack.provinces ?? []) {
       if (!province.i || province.removed) continue;
@@ -263,6 +280,59 @@ class CharactersModule {
       const liegeIndex = suzerainIndex === undefined ? undefined : rulerByState.get(suzerainIndex);
       if (liegeIndex !== undefined) characters[rulerIndex].liege = liegeIndex;
     }
+  }
+
+  // ties this ruler to an already-resolved ruler of another crown, both ways - the tie itself is
+  // what a childless death later resolves into a merger of the two realms
+  private tryFormMarriageAlliance(ruler: Character, rulerByState: Map<number, number>, characters: Character[]): void {
+    if (rulerByState.size === 0 || !P(MARRIAGE_ALLIANCE_CHANCE)) return;
+
+    const partnerIndex = ra([...rulerByState.values()]);
+    const partner = characters[partnerIndex];
+    if (!partner || partner.spouseState !== undefined) return;
+
+    ruler.spouse = partner.name;
+    ruler.spouseState = partner.state;
+    partner.spouse = ruler.name;
+    partner.spouseState = ruler.state;
+  }
+
+  // a childless ruler married into another crown: their realm doesn't pass to a stranger, it
+  // merges into their spouse's - the smaller crown's territory, provinces and burgs transfer, and
+  // the spouse's ruler (already resolved this era) reigns over both
+  private resolveMarriageMerge(
+    state: State,
+    prior: Character,
+    characters: Character[],
+    rulerByState: Map<number, number>
+  ): void {
+    if (prior.spouseState === undefined) return;
+
+    const survivor = pack.states[prior.spouseState];
+    if (!survivor || !survivor.i || survivor.removed || survivor.i === state.i) return;
+
+    const survivorRulerIndex = rulerByState.get(survivor.i);
+    if (survivorRulerIndex === undefined) return;
+
+    const absorbedRulerIndex = rulerByState.get(state.i);
+    if (absorbedRulerIndex !== undefined) {
+      characters[absorbedRulerIndex].removed = true;
+      rulerByState.delete(state.i);
+    }
+
+    for (const cellId of pack.cells.i) {
+      if (pack.cells.state[cellId] === state.i) pack.cells.state[cellId] = survivor.i;
+    }
+    for (const province of pack.provinces ?? []) {
+      if (province.state === state.i) province.state = survivor.i;
+    }
+    for (const burg of pack.burgs) {
+      if (burg.state === state.i) burg.state = survivor.i;
+    }
+
+    state.removed = true;
+    survivor.fullName = `${survivor.fullName} (united with ${state.name})`;
+    characters[survivorRulerIndex].role = `${characters[survivorRulerIndex].role}, uniting the crown of ${state.name}`;
   }
 
   private createRuler(index: number, state: State, capital: Burg): Character {
