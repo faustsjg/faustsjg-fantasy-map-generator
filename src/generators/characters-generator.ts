@@ -173,13 +173,14 @@ class CharactersModule {
 
       const index = characters.length;
       const ruler = this.createRuler(index, state, capital);
-      this.tryFormMarriageAlliance(ruler, rulerByState, characters);
+      this.tryFormMarriageAlliance(ruler, state, rulerByState, characters);
       characters.push(ruler);
       rulerByState.set(state.i, index);
     }
     this.linkStateLieges(characters, rulerByState);
 
     const nobleByProvince = new Map<number, number>(); // province.i -> character index
+    const provinceAdjacency = this.buildProvinceAdjacency();
 
     for (const province of pack.provinces ?? []) {
       if (!province.i || province.removed) continue;
@@ -188,7 +189,7 @@ class CharactersModule {
 
       const index = characters.length;
       const noble = this.createProvinceNoble(index, province, burg);
-      this.tryFormCountyMarriageAlliance(noble, province, nobleByProvince, characters);
+      this.tryFormCountyMarriageAlliance(noble, province, provinceAdjacency, nobleByProvince, characters);
       characters.push(noble);
       nobleByProvince.set(province.i, index);
 
@@ -234,7 +235,7 @@ class CharactersModule {
       if (prior && !ruler) extinctions.push({ state, prior });
       if (!ruler) {
         ruler = this.createRuler(index, state, capital);
-        this.tryFormMarriageAlliance(ruler, rulerByState, characters);
+        this.tryFormMarriageAlliance(ruler, state, rulerByState, characters);
       }
 
       characters.push(ruler);
@@ -248,6 +249,7 @@ class CharactersModule {
     }
 
     const nobleByProvince = new Map<number, number>();
+    const provinceAdjacency = this.buildProvinceAdjacency();
     const provinceExtinctions: { province: Province; prior: Character; originalName: string }[] = [];
 
     for (const province of pack.provinces ?? []) {
@@ -264,7 +266,7 @@ class CharactersModule {
       if (prior && !noble) provinceExtinctions.push({ province, prior, originalName: province.name });
       if (!noble) {
         noble = this.createProvinceNoble(index, province, burg);
-        this.tryFormCountyMarriageAlliance(noble, province, nobleByProvince, characters);
+        this.tryFormCountyMarriageAlliance(noble, province, provinceAdjacency, nobleByProvince, characters);
       }
 
       characters.push(noble);
@@ -302,12 +304,31 @@ class CharactersModule {
     }
   }
 
-  // ties this ruler to an already-resolved ruler of another crown, both ways - the tie itself is
-  // what a childless death later resolves into a merger of the two realms
-  private tryFormMarriageAlliance(ruler: Character, rulerByState: Map<number, number>, characters: Character[]): void {
+  // real dynastic marriages overwhelmingly happened between neighboring realms - sealing peace
+  // with a rival next door, or cementing an existing alliance - not between two random, unrelated
+  // crowns on opposite sides of the world
+  private isMarriageEligibleState(state: State, otherStateId: number): boolean {
+    if (state.neighbors?.includes(otherStateId)) return true;
+    const relation = state.diplomacy?.[otherStateId];
+    return relation === "Ally" || relation === "Friendly";
+  }
+
+  // ties this ruler to an already-resolved ruler of another (neighboring or allied) crown, both
+  // ways - the tie itself is what a childless death later resolves into a merger of the two realms
+  private tryFormMarriageAlliance(
+    ruler: Character,
+    state: State,
+    rulerByState: Map<number, number>,
+    characters: Character[]
+  ): void {
     if (rulerByState.size === 0 || !P(MARRIAGE_ALLIANCE_CHANCE)) return;
 
-    const partnerIndex = ra([...rulerByState.values()]);
+    const candidates = [...rulerByState.entries()]
+      .filter(([otherStateId]) => this.isMarriageEligibleState(state, otherStateId))
+      .map(([, index]) => index);
+    if (!candidates.length) return;
+
+    const partnerIndex = ra(candidates);
     const partner = characters[partnerIndex];
     if (!partner || partner.spouseState !== undefined) return;
 
@@ -355,19 +376,43 @@ class CharactersModule {
     characters[survivorRulerIndex].role = `${characters[survivorRulerIndex].role}, uniting the crown of ${state.name}`;
   }
 
-  // same idea as tryFormMarriageAlliance, one tier down: a county marries into another county of
-  // the same state - crossing into a different kingdom would leave a county stranded in foreign
-  // territory, so partners are restricted to provinces sharing this one's state
+  // one pass over every cell, recording which provinces actually share a border - so county
+  // marriages can be restricted to real neighbors instead of any county under the same crown
+  private buildProvinceAdjacency(): Map<number, Set<number>> {
+    const adjacency = new Map<number, Set<number>>();
+    for (const cellId of pack.cells?.i ?? []) {
+      const provinceId = pack.cells.province?.[cellId];
+      if (!provinceId) continue;
+
+      for (const neighborCellId of pack.cells.c?.[cellId] ?? []) {
+        const neighborProvinceId = pack.cells.province[neighborCellId];
+        if (!neighborProvinceId || neighborProvinceId === provinceId) continue;
+
+        if (!adjacency.has(provinceId)) adjacency.set(provinceId, new Set());
+        adjacency.get(provinceId)?.add(neighborProvinceId);
+      }
+    }
+    return adjacency;
+  }
+
+  // same idea as tryFormMarriageAlliance, one tier down: a county marries into a NEIGHBORING
+  // county of the same state - crossing into a different kingdom would leave a county stranded in
+  // foreign territory, and a random county across the whole realm is no more realistic than a
+  // random crown across the world
   private tryFormCountyMarriageAlliance(
     noble: Character,
     province: Province,
+    provinceAdjacency: Map<number, Set<number>>,
     nobleByProvince: Map<number, number>,
     characters: Character[]
   ): void {
     if (!P(MARRIAGE_ALLIANCE_CHANCE)) return;
 
+    const neighboringProvinceIds = provinceAdjacency.get(province.i);
+    if (!neighboringProvinceIds) return;
+
     const candidates = [...nobleByProvince.entries()]
-      .filter(([provinceId]) => pack.provinces?.[provinceId]?.state === province.state)
+      .filter(([provinceId]) => neighboringProvinceIds.has(provinceId) && pack.provinces?.[provinceId]?.state === province.state)
       .map(([, index]) => index);
     if (!candidates.length) return;
 

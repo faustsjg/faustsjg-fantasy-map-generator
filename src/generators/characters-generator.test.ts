@@ -87,8 +87,8 @@ describe("CharactersModule.generate", () => {
       burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
       states: [
         0 as any,
-        makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, diplomacy: ["x", "x", "x"] }),
-        makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, diplomacy: ["x", "x", "x"] })
+        makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, diplomacy: ["x", "x", "x"], neighbors: [2] }),
+        makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, diplomacy: ["x", "x", "x"], neighbors: [1] })
       ],
       guilds: [],
       provinces: [],
@@ -102,6 +102,49 @@ describe("CharactersModule.generate", () => {
     expect(king!.spouseState).toBe(duke!.state);
     expect(duke!.spouse).toBe(king!.name);
     expect(king!.spouse).toBe(duke!.name);
+  });
+
+  it("does not marry rulers of distant, unrelated states", () => {
+    Math.random = () => 0; // marriage roll always succeeds, but no eligible candidate exists
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Kingland", capital: 1, diplomacy: ["x", "x", "x"], neighbors: [] }),
+        makeState({ i: 2, name: "Dukeland", capital: 2, diplomacy: ["x", "x", "x"], neighbors: [] })
+      ],
+      guilds: [],
+      provinces: [],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.generate();
+    for (const character of globalThis.pack.characters!) {
+      expect(character.spouseState).toBeUndefined();
+    }
+  });
+
+  it("marries rulers who are allies even when they aren't neighbors", () => {
+    Math.random = () => 0; // marriage roll always succeeds
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Kingland", capital: 1, diplomacy: ["x", "x", "Ally"], neighbors: [] }),
+        makeState({ i: 2, name: "Dukeland", capital: 2, diplomacy: ["x", "Ally", "x"], neighbors: [] })
+      ],
+      guilds: [],
+      provinces: [],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.generate();
+    const king = globalThis.pack.characters!.find((c: any) => c.state === 1);
+    const duke = globalThis.pack.characters!.find((c: any) => c.state === 2);
+    expect(duke!.spouseState).toBe(1);
+    expect(king!.spouseState).toBe(2);
   });
 
   it("does not form a marriage alliance when the roll fails", () => {
@@ -156,6 +199,7 @@ describe("CharactersModule.generate", () => {
         makeProvince({ i: 1, state: 1, burg: 1, name: "Countyone", fullName: "Countyone County" }),
         makeProvince({ i: 2, state: 1, burg: 2, name: "Countytwo", fullName: "Countytwo County" })
       ],
+      cells: { i: [0, 1, 2], c: [[], [2], [1]], province: [0, 1, 2] }, // cell 1 (county 1) borders cell 2 (county 2)
       cultures: [null, { i: 1, name: "Testculture" }]
     } as any;
 
@@ -165,6 +209,29 @@ describe("CharactersModule.generate", () => {
     expect(nobleB!.spouseProvince).toBe(1);
     expect(nobleA!.spouseProvince).toBe(2);
     expect(nobleB!.spouse).toBe(nobleA!.name);
+  });
+
+  it("does not marry nobles of non-adjacent counties in the same state", () => {
+    Math.random = () => 0; // marriage roll always succeeds, but the counties don't border each other
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
+      states: [0 as any, makeState({ i: 1, diplomacy: ["x", "x"] })],
+      guilds: [],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1, burg: 1, name: "Countyone", fullName: "Countyone County" }),
+        makeProvince({ i: 2, state: 1, burg: 2, name: "Countytwo", fullName: "Countytwo County" })
+      ],
+      cells: { i: [0, 1, 2], c: [[], [], []], province: [0, 1, 2] }, // no shared border
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.generate();
+    const nobleA = globalThis.pack.characters!.find((c: any) => c.province === 1);
+    const nobleB = globalThis.pack.characters!.find((c: any) => c.province === 2);
+    expect(nobleA!.spouseProvince).toBeUndefined();
+    expect(nobleB!.spouseProvince).toBeUndefined();
   });
 
   it("does not marry nobles across different states", () => {
