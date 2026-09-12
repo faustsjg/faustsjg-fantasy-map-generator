@@ -26,7 +26,14 @@ const columns: EditorColumn<Character>[] = [
     sortType: "alpha",
     defaultSort: "asc"
   },
-  { key: "role", label: "Role", width: "12em", permanent: true, sortBy: character => character.role, sortType: "alpha" },
+  {
+    key: "role",
+    label: "Role",
+    width: "12em",
+    permanent: true,
+    sortBy: character => character.role,
+    sortType: "alpha"
+  },
   { key: "name", label: "Name", width: "9em", permanent: true, sortBy: character => character.name, sortType: "alpha" },
   { key: "burg", label: "Burg", width: "9em", sortBy: character => getBurgName(character), sortType: "alpha" },
   {
