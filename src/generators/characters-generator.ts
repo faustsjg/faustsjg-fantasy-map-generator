@@ -3,7 +3,7 @@
 // Titles, dynasties and family ties are all derived procedurally from the existing state/province
 // data (form, diplomacy) - nothing here is AI-generated. Only the on-demand bio (characters-overview.ts)
 // calls out to the AI generator, and only when a user clicks for it.
-import { getRandomColor, minmax, P, ra, rand } from "@/utils";
+import { getRandomColor, minmax, P, ra, rand, rw } from "@/utils";
 import type { Burg } from "./burgs-generator";
 import type { Province } from "./provinces-generator";
 import type { State } from "./states-generator";
@@ -126,56 +126,17 @@ const PROVINCE_TITLES: Record<string, string> = {
 
 type SuccessionLaw = "agnatic" | "male-preference" | "absolute" | "elective" | "ultimogeniture";
 
-// The political SYSTEM (hereditary vs. elective, and how) belongs to the state's form, not a
-// county's noble rank - a county inside a Republic follows the Republic's law, not "County"'s.
-// Unmapped forms fall back to male-preference primogeniture, the most common historical default.
-const DEFAULT_SUCCESSION_LAW: SuccessionLaw = "male-preference";
-const SUCCESSION_LAW_BY_FORM: Record<string, SuccessionLaw> = {
-  // Salic-law-style: strictly male-line. A daughter-only family really can go extinct here,
-  // exactly as it did in real history (France, 1328).
-  Empire: "agnatic",
-  Kingdom: "agnatic",
-  "Grand Duchy": "agnatic",
-  Duchy: "agnatic",
-  Principality: "agnatic",
-  // steppe/Mongol-Turkic custom: the youngest child inherited the parents' own hearth and lands
-  Khanate: "ultimogeniture",
-  Khaganate: "ultimogeniture",
-  Horde: "ultimogeniture",
-  Ulus: "ultimogeniture",
-  // republics, communes, and religious offices were typically chosen, not simply inherited
-  Republic: "elective",
-  Federation: "elective",
-  "Trade Company": "elective",
-  "Most Serene Republic": "elective",
-  Oligarchy: "elective",
-  Tetrarchy: "elective",
-  Triumvirate: "elective",
-  Diarchy: "elective",
-  Junta: "elective",
-  League: "elective",
-  Confederation: "elective",
-  "United Republic": "elective",
-  "United Provinces": "elective",
-  Commonwealth: "elective",
-  Heptarchy: "elective",
-  "Free Territory": "elective",
-  Council: "elective",
-  Commune: "elective",
-  Community: "elective",
-  "Free City": "elective",
-  "City-state": "elective",
-  Theocracy: "elective",
-  Brotherhood: "elective",
-  Thearchy: "elective",
-  See: "elective",
-  "Holy State": "elective",
-  Diocese: "elective",
-  Bishopric: "elective",
-  Eparchy: "elective",
-  Exarchate: "elective",
-  Patriarchate: "elective",
-  Imamah: "elective"
+// Azgaar already sorts every state into one of 5 top-level forms (states-generator.ts,
+// defineStateForms) before it ever picks a specific title like Kingdom or Khanate - Monarchy,
+// Republic, Union, Theocracy, Anarchy - and already weights that choice by culture (a Naval
+// culture leans Republic). Succession law rides the same axis instead of inventing a new one:
+// weighted per form, so a Monarchy is never electively-succeeded and a Republic never agnatic.
+const SUCCESSION_LAW_WEIGHTS_BY_FORM: Record<string, Partial<Record<SuccessionLaw, number>>> = {
+  Monarchy: { agnatic: 45, "male-preference": 35, ultimogeniture: 10, elective: 7, absolute: 3 },
+  Republic: { elective: 85, absolute: 10, "male-preference": 5 },
+  Union: { elective: 80, "male-preference": 10, absolute: 10 },
+  Theocracy: { elective: 75, "male-preference": 15, absolute: 10 },
+  Anarchy: { elective: 70, ultimogeniture: 15, absolute: 15 }
 };
 
 // Ordinary people worth naming without inventing a plot for them - just part of the world
@@ -310,7 +271,7 @@ class CharactersModule {
       const prior = state.lock ? priorRulerByState.get(state.i) : undefined;
       const role = `${this.getRulerTitle(state.formName)} of ${state.name}`;
 
-      const law = this.getSuccessionLaw(state.formName);
+      const law = this.getSuccessionLaw(state);
       const succeeded = prior ? this.succeed(index, prior, capital.i, role, yearsPerEra, law) : undefined;
       if (prior && !succeeded) extinctions.push({ state, prior });
 
@@ -352,7 +313,7 @@ class CharactersModule {
       const role = `${this.getProvinceTitle(province.formName)} of ${province.name}`;
 
       // a county follows its own kingdom's succession custom, not a rule tied to its noble rank
-      const law = this.getSuccessionLaw(pack.states[province.state]?.formName);
+      const law = this.getSuccessionLaw(pack.states[province.state]);
       let noble = prior ? this.succeed(index, prior, burg.i, role, yearsPerEra, law) : undefined;
       // captured before createProvinceNoble can rename it via founder-naming below
       if (prior && !noble) provinceExtinctions.push({ province, prior, originalName: province.name });
@@ -688,10 +649,28 @@ class CharactersModule {
     };
   }
 
-  private getSuccessionLaw(formName?: string): SuccessionLaw {
-    if (!formName) return DEFAULT_SUCCESSION_LAW;
-    const base = formName.startsWith("Divine ") ? formName.slice("Divine ".length) : formName;
-    return SUCCESSION_LAW_BY_FORM[base] ?? DEFAULT_SUCCESSION_LAW;
+  // rolled once per (culture, state.form) pair and cached directly on the culture - every
+  // Monarchy of that culture shares one succession custom, every Union of that same culture
+  // shares its own (a culture isn't only ever one form: a Naval culture can hold both a Monarchy
+  // and a Union at once, and each form has its own weight table). It stays put across
+  // regenerations and eras (pack.cultures isn't touched by either), and even survives save/load
+  // (cultures are saved as plain JSON, this field included). Only a genuinely new culture (a new
+  // map, or an explicit Regenerate Cultures) rolls again.
+  private getSuccessionLaw(state: State | undefined): SuccessionLaw {
+    const form = state?.form ?? "Monarchy";
+    const culture = pack.cultures[state?.culture ?? -1] as
+      | { successionLawByForm?: Partial<Record<string, SuccessionLaw>> }
+      | undefined;
+    const cached = culture?.successionLawByForm?.[form];
+    if (cached) return cached;
+
+    const weights = SUCCESSION_LAW_WEIGHTS_BY_FORM[form] ?? SUCCESSION_LAW_WEIGHTS_BY_FORM.Monarchy;
+    const law = rw(weights as Record<string, number>) as SuccessionLaw;
+    if (culture) {
+      culture.successionLawByForm ??= {};
+      culture.successionLawByForm[form] = law;
+    }
+    return law;
   }
 
   // who inherits depends on the law, not just birth order - agnatic succession can go extinct

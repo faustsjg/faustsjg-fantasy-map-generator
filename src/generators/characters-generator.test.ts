@@ -446,7 +446,7 @@ describe("CharactersModule.applySuccession", () => {
       states: [0 as any, makeState({ i: 1, name: "Testland", capital: 1, lock: true, diplomacy: ["x", "x"] })],
       guilds: [],
       characters: [makePriorRuler()],
-      cultures: [null, { i: 1, name: "Testculture" }]
+      cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Monarchy: "agnatic" } }]
     } as any;
 
     Characters.applySuccession(20);
@@ -680,7 +680,7 @@ describe("CharactersModule.applySuccession", () => {
       states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Kingdom", capital: 1, lock: true })],
       guilds: [],
       characters: [makePriorRuler({ children: [{ name: "OnlyDaughter", gender: "f" }] })],
-      cultures: [null, { i: 1, name: "Testculture" }]
+      cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Monarchy: "agnatic" } }]
     } as any;
 
     Characters.applySuccession(20);
@@ -694,7 +694,6 @@ describe("CharactersModule.applySuccession", () => {
 
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1 })],
-      // "Tsardom" isn't in the succession-law table, so it falls back to male-preference
       states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Tsardom", capital: 1, lock: true })],
       guilds: [],
       characters: [
@@ -705,7 +704,7 @@ describe("CharactersModule.applySuccession", () => {
           ]
         })
       ],
-      cultures: [null, { i: 1, name: "Testculture" }]
+      cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Monarchy: "male-preference" } }]
     } as any;
 
     Characters.applySuccession(20);
@@ -718,7 +717,7 @@ describe("CharactersModule.applySuccession", () => {
 
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1 })],
-      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Khanate", capital: 1, lock: true })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Khanate", form: "Monarchy", capital: 1, lock: true })],
       guilds: [],
       characters: [
         makePriorRuler({
@@ -728,7 +727,7 @@ describe("CharactersModule.applySuccession", () => {
           ]
         })
       ],
-      cultures: [null, { i: 1, name: "Testculture" }]
+      cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Monarchy: "ultimogeniture" } }]
     } as any;
 
     Characters.applySuccession(20);
@@ -741,10 +740,10 @@ describe("CharactersModule.applySuccession", () => {
 
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1 })],
-      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Republic", capital: 1, lock: true })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Republic", form: "Republic", capital: 1, lock: true })],
       guilds: [],
       characters: [makePriorRuler({ children: [{ name: "OnlyDaughter", gender: "f" }] })],
-      cultures: [null, { i: 1, name: "Testculture" }]
+      cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Republic: "elective" } }]
     } as any;
 
     Characters.applySuccession(20);
@@ -774,7 +773,7 @@ describe("CharactersModule.applySuccession", () => {
       ],
       characters: [priorRuler],
       cells: { i: [0, 1, 2, 3], state: [0, 1, 1, 1], province: [0, 1, 1, 2] },
-      cultures: [null, { i: 1, name: "Testculture" }]
+      cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Monarchy: "agnatic" } }]
     } as any;
 
     Characters.applySuccession(20);
@@ -812,7 +811,7 @@ describe("CharactersModule.applySuccession", () => {
       provinces: [0 as any, makeProvince({ i: 1, state: 1, burg: 1 })],
       characters: [priorRuler],
       cells: { i: [0, 1], state: [0, 1], province: [0, 1] },
-      cultures: [null, { i: 1, name: "Testculture" }]
+      cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Monarchy: "agnatic" } }]
     } as any;
 
     Characters.applySuccession(20);
@@ -820,5 +819,54 @@ describe("CharactersModule.applySuccession", () => {
     expect(globalThis.pack.states).toHaveLength(2); // no new state was created
     const primaryRuler = globalThis.pack.characters!.find((c: any) => c.name === "ElderSon");
     expect(primaryRuler!.role).not.toContain("divided");
+  });
+
+  it("rolls a succession law once per culture and keeps it fixed afterward", () => {
+    Math.random = () => 0; // would pick agnatic (first Monarchy weight), if it rolls at all
+
+    const culture: any = { i: 1, name: "Testculture" };
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", form: "Monarchy", capital: 1, lock: true })],
+      guilds: [],
+      characters: [makePriorRuler({ children: [{ name: "OnlyDaughter", gender: "f" }] })],
+      cultures: [null, culture]
+    } as any;
+
+    Characters.applySuccession(20);
+    const firstLaw = culture.successionLawByForm.Monarchy;
+    expect(firstLaw).toBe("agnatic");
+
+    // a different Math.random on a later call must not re-roll an already-assigned culture+form
+    Math.random = () => 0.99;
+    Characters.applySuccession(20);
+    expect(culture.successionLawByForm.Monarchy).toBe(firstLaw);
+  });
+
+  it("rolls succession law independently per state form, even within the same culture", () => {
+    Math.random = () => 0; // would pick the first weighted option for whichever form is rolled
+
+    const culture: any = { i: 1, name: "Testculture" };
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Kingland", form: "Monarchy", capital: 1, lock: true, diplomacy: ["x", "x", "x"] }),
+        makeState({ i: 2, name: "Uniland", form: "Union", capital: 2, lock: true, diplomacy: ["x", "x", "x"] })
+      ],
+      guilds: [],
+      characters: [
+        makePriorRuler({ i: 0, state: 1, children: [{ name: "OnlyDaughter1", gender: "f" }] }),
+        makePriorRuler({ i: 1, state: 2, children: [{ name: "OnlyDaughter2", gender: "f" }] })
+      ],
+      cultures: [null, culture]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    // Monarchy's first weight is agnatic, Union's is elective - a shared per-culture cache would
+    // force one onto the other; each form must keep its own roll instead
+    expect(culture.successionLawByForm.Monarchy).toBe("agnatic");
+    expect(culture.successionLawByForm.Union).toBe("elective");
   });
 });
