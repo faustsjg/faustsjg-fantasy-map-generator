@@ -58,6 +58,20 @@ describe("CharactersModule.generate", () => {
     expect(rulers[0].liege).toBeUndefined();
   });
 
+  it("gives every notable character a starting age within a plausible young-adult range", () => {
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg()],
+      states: [0 as any, makeState({ formName: "Kingdom" })],
+      guilds: [],
+      cultures: [null, { i: 1, name: "Testculture" }] // no base -> default 75-year human lifespan
+    } as any;
+
+    Characters.generate();
+    const ruler = globalThis.pack.characters!.find((c: any) => c.importance === "notable");
+    expect(ruler!.age).toBeGreaterThanOrEqual(11);
+    expect(ruler!.age).toBeLessThanOrEqual(41);
+  });
+
   it("links a vassal state's ruler to its suzerain's ruler as liege", () => {
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
@@ -604,5 +618,54 @@ describe("CharactersModule.applySuccession", () => {
 
     const stillClaimsProvince1 = globalThis.pack.characters!.some((c: any) => c.province === 1 && !c.removed);
     expect(stillClaimsProvince1).toBe(false);
+  });
+
+  it("gives long-lived species a much lower death chance than short-lived ones at the same age", () => {
+    // fixed threshold between the elf's floor chance (0.03) and the goblin's ceiling chance (0.95)
+    Math.random = () => 0.5;
+
+    const elfRuler = {
+      i: 0,
+      name: "Elf",
+      burg: 1,
+      culture: 1,
+      role: "King of Elfland",
+      importance: "notable",
+      dynasty: "House Elf",
+      state: 1,
+      age: 100, // well under half of a 700-year elven lifespan
+      children: ["ElfHeir"]
+    };
+    const goblinRuler = {
+      i: 1,
+      name: "Goblin",
+      burg: 2,
+      culture: 2,
+      role: "King of Goblinland",
+      importance: "notable",
+      dynasty: "House Goblin",
+      state: 2,
+      age: 100, // well past a 40-year goblin lifespan
+      children: ["GoblinHeir"]
+    };
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1, culture: 1 }), makeBurg({ i: 2, culture: 2 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Elfland", culture: 1, capital: 1, lock: true, diplomacy: ["x", "x", "x"] }),
+        makeState({ i: 2, name: "Goblinland", culture: 2, capital: 2, lock: true, diplomacy: ["x", "x", "x"] })
+      ],
+      guilds: [],
+      characters: [elfRuler, goblinRuler],
+      cultures: [null, { i: 1, name: "Elvish", base: 33 }, { i: 2, name: "Goblinoid", base: 36 }]
+    } as any;
+
+    Characters.applySuccession(1);
+
+    const elf = globalThis.pack.characters!.find((c: any) => c.state === 1);
+    const goblin = globalThis.pack.characters!.find((c: any) => c.state === 2);
+    expect(elf!.name).toBe("Elf"); // still well within an elf's prime - unchanged
+    expect(goblin!.name).toBe("GoblinHeir"); // a goblin this old has died and passed the crown on
   });
 });

@@ -3,7 +3,7 @@
 // Titles, dynasties and family ties are all derived procedurally from the existing state/province
 // data (form, diplomacy) - nothing here is AI-generated. Only the on-demand bio (characters-overview.ts)
 // calls out to the AI generator, and only when a user clicks for it.
-import { P, ra } from "@/utils";
+import { minmax, P, ra, rand } from "@/utils";
 import type { Burg } from "./burgs-generator";
 import type { Province } from "./provinces-generator";
 import type { State } from "./states-generator";
@@ -23,6 +23,7 @@ export interface Character {
   province?: number; // for a provincial noble: the province.i they govern, same reason
   spouseState?: number; // for a ruler married into another crown: that state's i
   spouseProvince?: number; // for a noble married into another county: that province's i
+  age?: number; // in years; drives succession together with the culture's lifespan
   bio?: string; // filled in on demand via the AI generator, not at generation time
   removed?: boolean;
 }
@@ -153,9 +154,21 @@ interface NobleSeed {
 // Savoy...) - not most, but not rare either; the rest keep their existing, older place name
 const FOUNDER_NAMING_CHANCE = 0.3;
 
-// average length of a reign, in years - used to scale how likely succession is for a given era
-// length: a 20-year era is likely to see one change of ruler, a 5-year one usually won't
-const AVERAGE_REIGN_YEARS = 25;
+// Dwarves, elves and the rest don't share a human lifespan, so neither should their reigns.
+// Keyed by name-base index (src/data/name-bases.ts) - only the fantasy bases differ from the
+// human baseline; every real-world base (0-32, 42+) falls through to DEFAULT_LIFESPAN_YEARS.
+const DEFAULT_LIFESPAN_YEARS = 75;
+const LIFESPAN_YEARS_BY_BASE: Record<number, number> = {
+  33: 700, // Elven
+  34: 700, // Dark Elven
+  35: 250, // Dwarven
+  36: 40, // Goblin
+  37: 55, // Orc
+  38: 220, // Giant
+  39: 600, // Draconic
+  40: 25, // Arachnid
+  41: 25 // Serpents
+};
 
 // chance a ruler marries into another crown rather than an anonymous spouse - real crowns, so a
 // childless death can merge the two realms (Aragon+Catalonia, Castile+Aragon, England+Scotland...)
@@ -216,7 +229,6 @@ class CharactersModule {
     const priorNobleByProvince = new Map(
       previous.filter(c => c.province !== undefined).map(c => [c.province as number, c])
     );
-    const successionChance = Math.min(0.9, Math.max(0.15, yearsPerEra / AVERAGE_REIGN_YEARS));
 
     const characters: Character[] = [];
     const rulerByState = new Map<number, number>();
@@ -231,7 +243,7 @@ class CharactersModule {
       const prior = state.lock ? priorRulerByState.get(state.i) : undefined;
       const role = `${this.getRulerTitle(state.formName)} of ${state.name}`;
 
-      let ruler = prior ? this.succeed(index, prior, capital.i, role, successionChance) : undefined;
+      let ruler = prior ? this.succeed(index, prior, capital.i, role, yearsPerEra) : undefined;
       if (prior && !ruler) extinctions.push({ state, prior });
       if (!ruler) {
         ruler = this.createRuler(index, state, capital);
@@ -261,7 +273,7 @@ class CharactersModule {
       const prior = priorNobleByProvince.get(province.i);
       const role = `${this.getProvinceTitle(province.formName)} of ${province.name}`;
 
-      let noble = prior ? this.succeed(index, prior, burg.i, role, successionChance) : undefined;
+      let noble = prior ? this.succeed(index, prior, burg.i, role, yearsPerEra) : undefined;
       // captured before createProvinceNoble can rename it via founder-naming below
       if (prior && !noble) provinceExtinctions.push({ province, prior, originalName: province.name });
       if (!noble) {
@@ -496,20 +508,20 @@ class CharactersModule {
     };
   }
 
-  // decide whether a still-locked ruler/noble keeps their seat, hands it to a recorded heir, or -
-  // with no heir on record - returns undefined so the caller starts a fresh house instead
-  private succeed(
-    index: number,
-    prior: Character,
-    burg: number,
-    role: string,
-    successionChance: number
-  ): Character | undefined {
-    if (!P(successionChance)) {
+  // decide whether a still-locked ruler/noble ages another era and keeps their seat, dies and
+  // hands it to a recorded heir, or - with no heir on record - returns undefined so the caller
+  // starts a fresh house instead. Mortality is driven by age against their own species' lifespan,
+  // not a flat probability - a 40-year-old dwarf and a 40-year-old goblin are nowhere near the
+  // same point in their lives
+  private succeed(index: number, prior: Character, burg: number, role: string, yearsPerEra: number): Character | undefined {
+    const lifespan = this.getLifespanYears(prior.culture);
+    const age = (prior.age ?? this.getStartingAge(lifespan)) + yearsPerEra;
+
+    if (!P(this.getDeathChance(age, lifespan))) {
       // liege is cleared and reassigned by the caller - carrying over the previous round's index
       // would point at the wrong character in this round's freshly built array
       const { liege: _liege, ...stillRules } = prior;
-      return { ...stillRules, i: index, burg, role };
+      return { ...stillRules, i: index, burg, role, age };
     }
 
     const heirName = prior.children?.[0];
@@ -522,6 +534,22 @@ class CharactersModule {
       state: prior.state,
       province: prior.province
     };
+  }
+
+  private getLifespanYears(culture: number): number {
+    const base = pack.cultures[culture]?.base;
+    return (base !== undefined && LIFESPAN_YEARS_BY_BASE[base]) || DEFAULT_LIFESPAN_YEARS;
+  }
+
+  // a ruler or noble typically comes to power as a young adult, occasionally later in life
+  private getStartingAge(lifespanYears: number): number {
+    return rand(Math.round(lifespanYears * 0.15), Math.round(lifespanYears * 0.55));
+  }
+
+  // mortality is negligible through the first half of a natural lifespan, then ramps up linearly
+  // to near-certain by the time it's fully spent - simple, but scales correctly across species
+  private getDeathChance(age: number, lifespanYears: number): number {
+    return minmax((age - lifespanYears * 0.5) / (lifespanYears * 0.5), 0.03, 0.95);
   }
 
   private addGuildMastersAndCommoners(characters: Character[]): void {
@@ -565,6 +593,7 @@ class CharactersModule {
       role: seed.role,
       importance: "notable",
       dynasty: `House of ${Names.getCultureShort(seed.culture)}`,
+      age: this.getStartingAge(this.getLifespanYears(seed.culture)),
       ...this.getFamily(seed.culture)
     };
   }
