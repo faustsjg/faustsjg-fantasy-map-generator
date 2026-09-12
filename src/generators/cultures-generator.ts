@@ -165,6 +165,13 @@ class CulturesGenerator {
           odd: 0.05,
           sort: (i: number) => (n(i) / td(i, 11) / bd(i, [6, 8])) * t[i],
           shield: "oval"
+        },
+        {
+          name: "Catalan",
+          base: 43,
+          odd: 1,
+          sort: (i: number) => n(i) / td(i, 16) / sf(i),
+          shield: "kite"
         }
       ];
     }
@@ -815,6 +822,13 @@ class CulturesGenerator {
         odd: 0.6,
         sort: (i: number) => n(i) / td(i, 16),
         shield: "spanish"
+      },
+      {
+        name: "Catalan",
+        base: 43,
+        odd: 0.2,
+        sort: (i: number) => n(i) / td(i, 16) / sf(i),
+        shield: "kite"
       },
       {
         name: "Slovan",
