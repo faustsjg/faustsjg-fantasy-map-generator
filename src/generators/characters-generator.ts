@@ -141,7 +141,12 @@ interface NobleSeed {
   burg: number;
   culture: number;
   role: string;
+  name?: string;
 }
+
+// some counties/duchies really were named after the family that first held them (Habsburg,
+// Savoy...) - not most, but not rare either; the rest keep their existing, older place name
+const FOUNDER_NAMING_CHANCE = 0.3;
 
 class CharactersModule {
   generate(): void {
@@ -181,11 +186,21 @@ class CharactersModule {
       if (!burg || !burg.i || burg.removed) continue;
 
       const culture = burg.culture ?? pack.states[province.state]?.culture ?? 0;
+      const nobleName = Names.getCulture(culture);
+
+      // the province takes the noble's own name, rather than an unrelated random word - a real
+      // historical pattern for smaller lordships, less common for old, established ones
+      if (P(FOUNDER_NAMING_CHANCE)) {
+        province.name = Names.getState(nobleName, culture);
+        province.fullName = `${province.name} ${province.formName}`;
+      }
+
       const index = characters.length;
       characters.push(
         this.createNoble(index, {
           burg: burg.i,
           culture,
+          name: nobleName,
           role: `${this.getProvinceTitle(province.formName)} of ${province.name}`
         })
       );
@@ -241,7 +256,7 @@ class CharactersModule {
   private createNoble(index: number, seed: NobleSeed): Character {
     return {
       i: index,
-      name: Names.getCulture(seed.culture),
+      name: seed.name ?? Names.getCulture(seed.culture),
       burg: seed.burg,
       culture: seed.culture,
       role: seed.role,

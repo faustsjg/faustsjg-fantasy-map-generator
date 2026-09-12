@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { COMMONER_ARCHETYPES } from "./characters-generator";
 
 function makeBurg(overrides: Record<string, unknown> = {}) {
@@ -9,16 +9,35 @@ function makeState(overrides: Record<string, unknown> = {}) {
   return { i: 1, name: "Testland", culture: 1, capital: 1, formName: "Kingdom", removed: false, ...overrides };
 }
 
+function makeProvince(overrides: Record<string, unknown> = {}) {
+  return {
+    i: 1,
+    state: 1,
+    burg: 1,
+    name: "Testshire",
+    formName: "County",
+    fullName: "Testshire County",
+    removed: false,
+    ...overrides
+  };
+}
+
 describe("CharactersModule.generate", () => {
   let Characters: any;
+  const originalRandom = Math.random;
 
   beforeEach(async () => {
     globalThis.Names = {
       getCulture: (culture: number) => `Person-${culture}`,
-      getCultureShort: (culture: number) => `Short-${culture}`
+      getCultureShort: (culture: number) => `Short-${culture}`,
+      getState: (name: string, culture: number) => `${name}Place-${culture}`
     } as any;
     const module = await import("./characters-generator");
     Characters = module.Characters;
+  });
+
+  afterEach(() => {
+    Math.random = originalRandom;
   });
 
   it("creates a ruler for each state, named after the formName's title", () => {
@@ -62,11 +81,13 @@ describe("CharactersModule.generate", () => {
   });
 
   it("creates a provincial noble tied to its state's ruler as liege", () => {
+    Math.random = () => 0.99; // never triggers founder-naming, keeps the province's own name
+
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1 })],
       states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Kingdom", capital: 1, diplomacy: ["x", "x"] })],
       guilds: [],
-      provinces: [0 as any, { i: 1, state: 1, burg: 1, name: "Testshire", formName: "County", removed: false }],
+      provinces: [0 as any, makeProvince()],
       cultures: [null, { i: 1, name: "Testculture" }]
     } as any;
 
@@ -76,6 +97,43 @@ describe("CharactersModule.generate", () => {
     expect(noble).toBeDefined();
     expect(noble!.importance).toBe("notable");
     expect(noble!.liege).toBe(king!.i);
+  });
+
+  it("renames the province after its noble when the founder-naming roll succeeds", () => {
+    Math.random = () => 0; // always triggers founder-naming
+
+    const province = makeProvince();
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, formName: "Kingdom", capital: 1, diplomacy: ["x", "x"] })],
+      guilds: [],
+      provinces: [0 as any, province],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.generate();
+    // the noble's own generated name ("Person-1") becomes the root of the province's new name
+    expect(province.name).toBe("Person-1Place-1");
+    expect(province.fullName).toBe("Person-1Place-1 County");
+    const noble = globalThis.pack.characters!.find((c: any) => c.role === "Count of Person-1Place-1");
+    expect(noble).toBeDefined();
+  });
+
+  it("keeps the province's original name when the founder-naming roll fails", () => {
+    Math.random = () => 0.99;
+
+    const province = makeProvince();
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, formName: "Kingdom", capital: 1, diplomacy: ["x", "x"] })],
+      guilds: [],
+      provinces: [0 as any, province],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.generate();
+    expect(province.name).toBe("Testshire");
+    expect(province.fullName).toBe("Testshire County");
   });
 
   it("falls back to a generic 'Ruler' title for an unmapped state form", () => {
