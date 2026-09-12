@@ -1,4 +1,6 @@
 import { sum } from "d3";
+import type { Character } from "@/generators/characters-generator";
+import { Characters } from "@/generators/characters-generator";
 import type { State } from "@/generators/states-generator";
 import { mutateName } from "@/generators/toponym-drift";
 import { minmax, P } from "../utils";
@@ -11,6 +13,7 @@ export interface Era {
   year: number;
   states: State[];
   cellsState: number[];
+  characters: Character[];
 }
 
 // Chance that a state survives into the next era, based on its share of the
@@ -35,6 +38,7 @@ class ErasModule {
       options.year += yearsPerEra;
       this.applySuccession();
       window.States.regenerate();
+      Characters.applySuccession(yearsPerEra);
       eras.push(this.snapshot(options.year));
     }
 
@@ -46,7 +50,8 @@ class ErasModule {
     return {
       year,
       states: structuredClone(pack.states),
-      cellsState: Array.from(pack.cells.state)
+      cellsState: Array.from(pack.cells.state),
+      characters: structuredClone(pack.characters ?? [])
     };
   }
 

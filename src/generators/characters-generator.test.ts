@@ -204,3 +204,124 @@ describe("CharactersModule.generate", () => {
     }
   });
 });
+
+describe("CharactersModule.applySuccession", () => {
+  let Characters: any;
+  const originalRandom = Math.random;
+
+  function makePriorRuler(overrides: Record<string, unknown> = {}) {
+    return {
+      i: 0,
+      name: "OldRuler",
+      burg: 1,
+      culture: 1,
+      role: "King of Testland",
+      importance: "notable",
+      dynasty: "House of Old",
+      state: 1,
+      spouse: "OldSpouse",
+      children: ["Heir1", "Heir2"],
+      ...overrides
+    };
+  }
+
+  beforeEach(async () => {
+    globalThis.Names = {
+      getCulture: (culture: number) => `Person-${culture}`,
+      getCultureShort: (culture: number) => `Short-${culture}`,
+      getState: (name: string, culture: number) => `${name}Place-${culture}`
+    } as any;
+    const module = await import("./characters-generator");
+    Characters = module.Characters;
+  });
+
+  afterEach(() => {
+    Math.random = originalRandom;
+  });
+
+  it("keeps the same ruler in place when the succession roll fails, refreshing only the role", () => {
+    Math.random = () => 0.99; // succession never triggers
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", capital: 1, lock: true, diplomacy: ["x", "x"] })],
+      guilds: [],
+      characters: [makePriorRuler()],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+    const ruler = globalThis.pack.characters!.find((c: any) => c.state === 1);
+    expect(ruler!.name).toBe("OldRuler");
+    expect(ruler!.dynasty).toBe("House of Old");
+    expect(ruler!.role).toBe("King of Testland");
+  });
+
+  it("hands the crown to the recorded heir when succession triggers, keeping the same dynasty", () => {
+    Math.random = () => 0; // succession always triggers
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", capital: 1, lock: true, diplomacy: ["x", "x"] })],
+      guilds: [],
+      characters: [makePriorRuler()],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+    const ruler = globalThis.pack.characters!.find((c: any) => c.state === 1);
+    expect(ruler!.name).toBe("Heir1");
+    expect(ruler!.dynasty).toBe("House of Old");
+    expect(ruler!.role).toBe("King of Testland");
+  });
+
+  it("starts a fresh dynasty when succession triggers but no heir was ever recorded", () => {
+    Math.random = () => 0; // succession always triggers
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", capital: 1, lock: true, diplomacy: ["x", "x"] })],
+      guilds: [],
+      characters: [makePriorRuler({ children: undefined })],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+    const ruler = globalThis.pack.characters!.find((c: any) => c.state === 1);
+    expect(ruler!.name).toBe("Person-1");
+    expect(ruler!.dynasty).toBe("House of Short-1");
+  });
+
+  it("gives an unlocked (fallen) state a fresh ruler regardless of who ruled it before", () => {
+    Math.random = () => 0.99; // would keep the old ruler in place, if the state were locked
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", capital: 1, lock: false, diplomacy: ["x", "x"] })],
+      guilds: [],
+      characters: [makePriorRuler()],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+    const ruler = globalThis.pack.characters!.find((c: any) => c.state === 1);
+    expect(ruler!.name).toBe("Person-1");
+    expect(ruler!.dynasty).toBe("House of Short-1");
+  });
+
+  it("clears a stale liege link when the state is no longer anyone's vassal", () => {
+    Math.random = () => 0.99; // same ruler carries over unchanged, apart from liege
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", capital: 1, lock: true, diplomacy: ["x", "x"] })],
+      guilds: [],
+      characters: [makePriorRuler({ liege: 99 })], // stale index from a previous era's array
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+    const ruler = globalThis.pack.characters!.find((c: any) => c.state === 1);
+    expect(ruler!.liege).toBeUndefined();
+  });
+});

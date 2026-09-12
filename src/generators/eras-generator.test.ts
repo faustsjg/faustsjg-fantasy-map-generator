@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { survivalChance } from "./eras-generator";
 
+// ErasModule's own tests are about state locking and name drift, not dynasty succession (that's
+// covered in characters-generator.test.ts) - stub it out so these tests don't need a full
+// Names/pack.characters fixture just to avoid crashing.
+vi.mock("./characters-generator", () => ({
+  Characters: { applySuccession: vi.fn() }
+}));
+
 describe("survivalChance", () => {
   it("gives the dominant state in a two-state world a high but capped chance", () => {
     expect(survivalChance(90, 100, 2)).toBe(0.9);
@@ -25,6 +32,7 @@ describe("survivalChance", () => {
 describe("ErasModule.generate", () => {
   let ErasModule: any;
   let regenerate: ReturnType<typeof vi.fn>;
+  let applySuccession: any;
 
   beforeEach(async () => {
     vi.resetModules();
@@ -51,6 +59,10 @@ describe("ErasModule.generate", () => {
 
     await import("./eras-generator");
     ErasModule = (globalThis as any).window.Eras;
+    // the mocked module instance persists across vi.resetModules() calls, so re-resolve it (to
+    // stay bound to whatever eras-generator itself resolved) and clear its call history
+    applySuccession = (await import("./characters-generator")).Characters.applySuccession;
+    applySuccession.mockClear();
   });
 
   afterEach(() => {
@@ -77,6 +89,12 @@ describe("ErasModule.generate", () => {
     const eras = ErasModule.generate(3, 50);
     expect(eras.map((e: any) => e.year)).toEqual([1000, 1050, 1100]);
     expect(regenerate).toHaveBeenCalledTimes(2);
+  });
+
+  it("calls Characters.applySuccession once per extra era, after States.regenerate, with the era length", () => {
+    ErasModule.generate(3, 50);
+    expect(applySuccession).toHaveBeenCalledTimes(2);
+    expect(applySuccession).toHaveBeenCalledWith(50);
   });
 
   it("locks every state when P() always succeeds, so all survive into the next era", () => {

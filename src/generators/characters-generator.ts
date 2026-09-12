@@ -5,6 +5,7 @@
 // calls out to the AI generator, and only when a user clicks for it.
 import { P, ra } from "@/utils";
 import type { Burg } from "./burgs-generator";
+import type { Province } from "./provinces-generator";
 import type { State } from "./states-generator";
 
 export interface Character {
@@ -18,6 +19,8 @@ export interface Character {
   spouse?: string;
   children?: string[];
   liege?: number; // index into pack.characters of this character's overlord, if any
+  state?: number; // for a ruler: the state.i they rule - lets Eras find them again next era
+  province?: number; // for a provincial noble: the province.i they govern, same reason
   bio?: string; // filled in on demand via the AI generator, not at generation time
   removed?: boolean;
 }
@@ -148,6 +151,10 @@ interface NobleSeed {
 // Savoy...) - not most, but not rare either; the rest keep their existing, older place name
 const FOUNDER_NAMING_CHANCE = 0.3;
 
+// average length of a reign, in years - used to scale how likely succession is for a given era
+// length: a 20-year era is likely to see one change of ruler, a 5-year one usually won't
+const AVERAGE_REIGN_YEARS = 25;
+
 class CharactersModule {
   generate(): void {
     const characters: Character[] = [];
@@ -159,17 +166,94 @@ class CharactersModule {
       if (!capital || !capital.i || capital.removed) continue;
 
       const index = characters.length;
+      characters.push(this.createRuler(index, state, capital));
+      rulerByState.set(state.i, index);
+    }
+    this.linkStateLieges(characters, rulerByState);
+
+    for (const province of pack.provinces ?? []) {
+      if (!province.i || province.removed) continue;
+      const burg = pack.burgs[province.burg];
+      if (!burg || !burg.i || burg.removed) continue;
+
+      const index = characters.length;
+      characters.push(this.createProvinceNoble(index, province, burg));
+      const liegeIndex = rulerByState.get(province.state);
+      if (liegeIndex !== undefined) characters[index].liege = liegeIndex;
+    }
+
+    this.addGuildMastersAndCommoners(characters);
+    pack.characters = characters;
+  }
+
+  regenerate(): void {
+    this.generate();
+  }
+
+  // Called after Eras advances the political map (Eras.applySuccession() locks surviving states,
+  // States.regenerate() rebuilds the rest - locked states and their provinces keep their original
+  // `i`, everything else is fresh). A surviving dynasty either keeps ruling, hands power to a
+  // recorded heir, or - if it left no heir - goes extinct and a new house rises in its place.
+  // Everything outside a locked state/province is generated exactly like a fresh map.
+  applySuccession(yearsPerEra: number): void {
+    const previous = pack.characters ?? [];
+    const priorRulerByState = new Map(previous.filter(c => c.state !== undefined).map(c => [c.state as number, c]));
+    const priorNobleByProvince = new Map(
+      previous.filter(c => c.province !== undefined).map(c => [c.province as number, c])
+    );
+    const successionChance = Math.min(0.9, Math.max(0.15, yearsPerEra / AVERAGE_REIGN_YEARS));
+
+    const characters: Character[] = [];
+    const rulerByState = new Map<number, number>();
+
+    for (const state of pack.states) {
+      if (!state.i || state.removed) continue;
+      const capital = pack.burgs[state.capital];
+      if (!capital || !capital.i || capital.removed) continue;
+
+      const index = characters.length;
+      const prior = state.lock ? priorRulerByState.get(state.i) : undefined;
+      const role = `${this.getRulerTitle(state.formName)} of ${state.name}`;
       characters.push(
-        this.createNoble(index, {
-          burg: capital.i,
-          culture: state.culture,
-          role: `${this.getRulerTitle(state.formName)} of ${state.name}`
-        })
+        prior
+          ? (this.succeed(index, prior, capital.i, role, successionChance) ?? this.createRuler(index, state, capital))
+          : this.createRuler(index, state, capital)
       );
       rulerByState.set(state.i, index);
     }
+    this.linkStateLieges(characters, rulerByState);
 
-    // a vassal state's rank comes from its suzerain - link the ruler characters the same way
+    for (const province of pack.provinces ?? []) {
+      if (!province.i || province.removed) continue;
+      const burg = pack.burgs[province.burg];
+      if (!burg || !burg.i || burg.removed) continue;
+
+      const index = characters.length;
+      const prior = priorNobleByProvince.get(province.i);
+      const role = `${this.getProvinceTitle(province.formName)} of ${province.name}`;
+      characters.push(
+        prior
+          ? (this.succeed(index, prior, burg.i, role, successionChance) ??
+              this.createProvinceNoble(index, province, burg))
+          : this.createProvinceNoble(index, province, burg)
+      );
+
+      const liegeIndex = rulerByState.get(province.state);
+      if (liegeIndex !== undefined) characters[index].liege = liegeIndex;
+    }
+
+    this.addGuildMastersAndCommoners(characters);
+    pack.characters = characters;
+  }
+
+  // states[f].diplomacy[t] records the role f plays toward t; a state with "Vassal" somewhere in
+  // its own array plays that role toward whichever state sits at that index - its suzerain
+  private getSuzerainStateIndex(state: State): number | undefined {
+    const suzerainIndex = state.diplomacy?.indexOf("Vassal") ?? -1;
+    return suzerainIndex > 0 ? suzerainIndex : undefined;
+  }
+
+  private linkStateLieges(characters: Character[], rulerByState: Map<number, number>): void {
     for (const state of pack.states) {
       if (!state.i || state.removed) continue;
       const rulerIndex = rulerByState.get(state.i);
@@ -179,36 +263,70 @@ class CharactersModule {
       const liegeIndex = suzerainIndex === undefined ? undefined : rulerByState.get(suzerainIndex);
       if (liegeIndex !== undefined) characters[rulerIndex].liege = liegeIndex;
     }
+  }
 
-    for (const province of pack.provinces ?? []) {
-      if (!province.i || province.removed) continue;
-      const burg = pack.burgs[province.burg];
-      if (!burg || !burg.i || burg.removed) continue;
+  private createRuler(index: number, state: State, capital: Burg): Character {
+    return {
+      ...this.createNoble(index, {
+        burg: capital.i,
+        culture: state.culture,
+        role: `${this.getRulerTitle(state.formName)} of ${state.name}`
+      }),
+      state: state.i
+    };
+  }
 
-      const culture = burg.culture ?? pack.states[province.state]?.culture ?? 0;
-      const nobleName = Names.getCulture(culture);
+  private createProvinceNoble(index: number, province: Province, burg: Burg): Character {
+    const culture = burg.culture ?? pack.states[province.state]?.culture ?? 0;
+    const nobleName = Names.getCulture(culture);
 
-      // the province takes the noble's own name, rather than an unrelated random word - a real
-      // historical pattern for smaller lordships, less common for old, established ones
-      if (P(FOUNDER_NAMING_CHANCE)) {
-        province.name = Names.getState(nobleName, culture);
-        province.fullName = `${province.name} ${province.formName}`;
-      }
-
-      const index = characters.length;
-      characters.push(
-        this.createNoble(index, {
-          burg: burg.i,
-          culture,
-          name: nobleName,
-          role: `${this.getProvinceTitle(province.formName)} of ${province.name}`
-        })
-      );
-
-      const liegeIndex = rulerByState.get(province.state);
-      if (liegeIndex !== undefined) characters[index].liege = liegeIndex;
+    // the province takes the noble's own name, rather than an unrelated random word - a real
+    // historical pattern for smaller lordships, less common for old, established ones
+    if (P(FOUNDER_NAMING_CHANCE)) {
+      province.name = Names.getState(nobleName, culture);
+      province.fullName = `${province.name} ${province.formName}`;
     }
 
+    return {
+      ...this.createNoble(index, {
+        burg: burg.i,
+        culture,
+        name: nobleName,
+        role: `${this.getProvinceTitle(province.formName)} of ${province.name}`
+      }),
+      province: province.i
+    };
+  }
+
+  // decide whether a still-locked ruler/noble keeps their seat, hands it to a recorded heir, or -
+  // with no heir on record - returns undefined so the caller starts a fresh house instead
+  private succeed(
+    index: number,
+    prior: Character,
+    burg: number,
+    role: string,
+    successionChance: number
+  ): Character | undefined {
+    if (!P(successionChance)) {
+      // liege is cleared and reassigned by the caller - carrying over the previous round's index
+      // would point at the wrong character in this round's freshly built array
+      const { liege: _liege, ...stillRules } = prior;
+      return { ...stillRules, i: index, burg, role };
+    }
+
+    const heirName = prior.children?.[0];
+    if (!heirName) return undefined; // no heir survives - the dynasty ends here
+
+    return {
+      // the heir carries on the same house; createNoble would otherwise roll a fresh, unrelated one
+      ...this.createNoble(index, { burg, culture: prior.culture, name: heirName, role }),
+      dynasty: prior.dynasty,
+      state: prior.state,
+      province: prior.province
+    };
+  }
+
+  private addGuildMastersAndCommoners(characters: Character[]): void {
     for (const guild of pack.guilds ?? []) {
       if (guild.removed) continue;
       const burg = pack.burgs[guild.burg];
@@ -238,19 +356,6 @@ class CharactersModule {
         });
       }
     }
-
-    pack.characters = characters;
-  }
-
-  regenerate(): void {
-    this.generate();
-  }
-
-  // states[f].diplomacy[t] records the role f plays toward t; a state with "Vassal" somewhere in
-  // its own array plays that role toward whichever state sits at that index - its suzerain
-  private getSuzerainStateIndex(state: State): number | undefined {
-    const suzerainIndex = state.diplomacy?.indexOf("Vassal") ?? -1;
-    return suzerainIndex > 0 ? suzerainIndex : undefined;
   }
 
   private createNoble(index: number, seed: NobleSeed): Character {
