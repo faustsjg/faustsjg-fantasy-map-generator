@@ -1,8 +1,13 @@
 // Regenerates the world at a higher cell density while keeping the current heightmap's shape.
 import { mean, quadtree } from "d3";
 import { ErasePipeline } from "@/generators/generation-pipeline";
-import { ensureEl, isWater, SEA_LEVEL } from "@/utils";
+import { ensureEl, isWater, minmax, SEA_LEVEL } from "@/utils";
 import type { Point } from "./voronoi";
+
+// how far from the sea-level threshold a cell still counts as "coastal zone" for fine detail
+const COASTAL_BAND = 8;
+// how mountainous a cell must already be before it gets extra sub-peak detail
+const HIGHLAND_THRESHOLD = 55;
 
 // Same table the "Points number" sliders already use (public/modules/ui/options.js's cellsDensityMap)
 export const CELLS_DENSITY_MAP: Record<number, number> = {
@@ -91,6 +96,7 @@ class DetailExpanderModule {
 
     grid.cells.h = heights;
     this.smoothHeightmap();
+    this.addFineDetail();
   }
 
   // resampling from a sparser grid leaves flat plateaus at the old cell boundaries; average each
@@ -103,6 +109,37 @@ class DetailExpanderModule {
         ? Math.min(meanHeight, SEA_LEVEL - 1)
         : Math.max(meanHeight, SEA_LEVEL);
     });
+  }
+
+  /**
+   * Smoothing alone only softens the old cell boundaries - it never adds detail the coarser
+   * source heightmap didn't have, so a resampled coastline stays exactly as smooth/simple as
+   * before, just at a higher resolution. This adds real new complexity - small bays, headlands,
+   * islets, sub-ridges - that only becomes resolvable now that there are more cells to carry it.
+   * The noise is smoothed once before being applied so it reads as terrain (coherent bumps and
+   * dips), not per-cell salt-and-pepper.
+   */
+  private addFineDetail(): void {
+    const heights = grid.cells.h;
+    const noise = new Float32Array(heights.length);
+
+    for (const i of grid.cells.i) {
+      const isCoastalZone = Math.abs(heights[i] - SEA_LEVEL) <= COASTAL_BAND;
+      const isHighland = heights[i] > HIGHLAND_THRESHOLD;
+      if (isCoastalZone) noise[i] = (Math.random() - 0.5) * 2 * COASTAL_BAND;
+      else if (isHighland) noise[i] = (Math.random() - 0.5) * 2 * (HIGHLAND_THRESHOLD / 5);
+    }
+
+    const smoothedNoise = new Float32Array(noise.length);
+    for (const i of grid.cells.i) {
+      const values = [noise[i], ...grid.cells.c[i].map((c: number) => noise[c])];
+      smoothedNoise[i] = mean(values) as number;
+    }
+
+    for (const i of grid.cells.i) {
+      if (smoothedNoise[i] === 0) continue;
+      heights[i] = minmax(Math.round(heights[i] + smoothedNoise[i]), 0, 100);
+    }
   }
 }
 
