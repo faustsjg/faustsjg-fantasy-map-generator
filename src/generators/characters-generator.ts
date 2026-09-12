@@ -478,7 +478,9 @@ class CharactersModule {
     characters: Character[],
     rulerByState: Map<number, number>
   ): void {
-    const provinces = (pack.provinces ?? []).filter(province => province.i && !province.removed && province.state === state.i);
+    const provinces = (pack.provinces ?? []).filter(
+      province => province.i && !province.removed && province.state === state.i
+    );
     if (provinces.length < 2) return;
 
     const splinterProvinces = provinces.slice(Math.max(1, Math.floor(provinces.length / 2)));
@@ -709,7 +711,11 @@ class CharactersModule {
 
   // the sibling who would inherit next under the same law, if the primary heir's claim didn't
   // stand - the seed of a succession crisis, not a real title until trySplitRealm acts on it
-  private getRunnerUpHeir(children: Child[] | undefined, law: SuccessionLaw, primaryHeirName: string): Child | undefined {
+  private getRunnerUpHeir(
+    children: Child[] | undefined,
+    law: SuccessionLaw,
+    primaryHeirName: string
+  ): Child | undefined {
     const rest = children?.filter(child => child.name !== primaryHeirName);
     if (!rest?.length) return undefined;
 
