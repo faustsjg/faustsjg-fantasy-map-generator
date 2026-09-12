@@ -3,6 +3,7 @@ import type { Character } from "@/generators/characters-generator";
 import { Characters } from "@/generators/characters-generator";
 import type { State } from "@/generators/states-generator";
 import { mutateName } from "@/generators/toponym-drift";
+import { Wars } from "@/generators/wars-generator";
 import { minmax, P } from "../utils";
 
 declare global {
@@ -38,6 +39,7 @@ class ErasModule {
       options.year += yearsPerEra;
       this.applySuccession();
       window.States.regenerate();
+      Wars.resolveCampaigns();
       Characters.applySuccession(yearsPerEra);
       eras.push(this.snapshot(options.year));
     }

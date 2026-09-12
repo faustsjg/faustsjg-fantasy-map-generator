@@ -61,7 +61,7 @@ export interface State {
   lore?: StateLore;
 }
 
-interface Campaign {
+export interface Campaign {
   attacker: number;
   defender: number;
   name: string;
