@@ -144,6 +144,51 @@ describe("CharactersModule.generate", () => {
     expect(noble!.liege).toBe(king!.i);
   });
 
+  it("forms a marriage alliance between two nobles of the same state", () => {
+    Math.random = () => 0; // marriage roll always succeeds
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
+      states: [0 as any, makeState({ i: 1, diplomacy: ["x", "x"] })],
+      guilds: [],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1, burg: 1, name: "Countyone", fullName: "Countyone County" }),
+        makeProvince({ i: 2, state: 1, burg: 2, name: "Countytwo", fullName: "Countytwo County" })
+      ],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.generate();
+    const nobleA = globalThis.pack.characters!.find((c: any) => c.province === 1);
+    const nobleB = globalThis.pack.characters!.find((c: any) => c.province === 2);
+    expect(nobleB!.spouseProvince).toBe(1);
+    expect(nobleA!.spouseProvince).toBe(2);
+    expect(nobleB!.spouse).toBe(nobleA!.name);
+  });
+
+  it("does not marry nobles across different states", () => {
+    Math.random = () => 0; // marriage roll always succeeds, but no eligible same-state candidate
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, diplomacy: ["x", "x", "x"] }),
+        makeState({ i: 2, diplomacy: ["x", "x", "x"] })
+      ],
+      guilds: [],
+      provinces: [0 as any, makeProvince({ i: 1, state: 1, burg: 1 }), makeProvince({ i: 2, state: 2, burg: 2 })],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.generate();
+    const nobleA = globalThis.pack.characters!.find((c: any) => c.province === 1);
+    const nobleB = globalThis.pack.characters!.find((c: any) => c.province === 2);
+    expect(nobleA!.spouseProvince).toBeUndefined();
+    expect(nobleB!.spouseProvince).toBeUndefined();
+  });
+
   it("renames the province after its noble when the founder-naming roll succeeds", () => {
     Math.random = () => 0; // always triggers founder-naming
 
@@ -426,5 +471,64 @@ describe("CharactersModule.applySuccession", () => {
 
     const stillClaimsState1 = globalThis.pack.characters!.some((c: any) => c.state === 1 && !c.removed);
     expect(stillClaimsState1).toBe(false);
+  });
+
+  it("merges a childless county into its spouse's county on succession", () => {
+    Math.random = () => 0; // succession always triggers for both nobles
+
+    const priorA = {
+      i: 0,
+      name: "NobleA",
+      burg: 1,
+      culture: 1,
+      role: "Count of Countyone",
+      importance: "notable",
+      dynasty: "House A",
+      province: 1,
+      spouse: "NobleB",
+      spouseProvince: 2
+      // no children - this line goes extinct, but it's married into county 2
+    };
+    const priorB = {
+      i: 1,
+      name: "NobleB",
+      burg: 2,
+      culture: 1,
+      role: "Count of Countytwo",
+      importance: "notable",
+      dynasty: "House B",
+      province: 2,
+      spouse: "NobleA",
+      spouseProvince: 1,
+      children: ["BHeir"] // has its own heir - never goes extinct
+    };
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
+      states: [0 as any, makeState({ i: 1, capital: 1, lock: true, diplomacy: ["x", "x"] })],
+      guilds: [],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1, burg: 1, name: "Countyone", fullName: "Countyone County" }),
+        makeProvince({ i: 2, state: 1, burg: 2, name: "Countytwo", fullName: "Countytwo County" })
+      ],
+      characters: [priorA, priorB],
+      cells: { i: [0, 1, 2, 3], state: [0, 1, 1, 1], province: [0, 1, 1, 2] },
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    expect(globalThis.pack.provinces[1].removed).toBe(true);
+    expect(globalThis.pack.provinces[2].removed).toBeFalsy();
+    expect(globalThis.pack.provinces[2].fullName).toContain("united with Countyone");
+    expect(Array.from(globalThis.pack.cells.province)).toEqual([0, 2, 2, 2]);
+
+    const survivorNoble = globalThis.pack.characters!.find((c: any) => c.province === 2 && !c.removed);
+    expect(survivorNoble!.name).toBe("BHeir");
+    expect(survivorNoble!.role).toContain("uniting the county of Countyone");
+
+    const stillClaimsProvince1 = globalThis.pack.characters!.some((c: any) => c.province === 1 && !c.removed);
+    expect(stillClaimsProvince1).toBe(false);
   });
 });

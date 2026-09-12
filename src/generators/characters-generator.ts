@@ -22,6 +22,7 @@ export interface Character {
   state?: number; // for a ruler: the state.i they rule - lets Eras find them again next era
   province?: number; // for a provincial noble: the province.i they govern, same reason
   spouseState?: number; // for a ruler married into another crown: that state's i
+  spouseProvince?: number; // for a noble married into another county: that province's i
   bio?: string; // filled in on demand via the AI generator, not at generation time
   removed?: boolean;
 }
@@ -178,13 +179,19 @@ class CharactersModule {
     }
     this.linkStateLieges(characters, rulerByState);
 
+    const nobleByProvince = new Map<number, number>(); // province.i -> character index
+
     for (const province of pack.provinces ?? []) {
       if (!province.i || province.removed) continue;
       const burg = pack.burgs[province.burg];
       if (!burg || !burg.i || burg.removed) continue;
 
       const index = characters.length;
-      characters.push(this.createProvinceNoble(index, province, burg));
+      const noble = this.createProvinceNoble(index, province, burg);
+      this.tryFormCountyMarriageAlliance(noble, province, nobleByProvince, characters);
+      characters.push(noble);
+      nobleByProvince.set(province.i, index);
+
       const liegeIndex = rulerByState.get(province.state);
       if (liegeIndex !== undefined) characters[index].liege = liegeIndex;
     }
@@ -240,6 +247,9 @@ class CharactersModule {
       this.resolveMarriageMerge(state, prior, characters, rulerByState);
     }
 
+    const nobleByProvince = new Map<number, number>();
+    const provinceExtinctions: { province: Province; prior: Character; originalName: string }[] = [];
+
     for (const province of pack.provinces ?? []) {
       if (!province.i || province.removed) continue;
       const burg = pack.burgs[province.burg];
@@ -248,15 +258,25 @@ class CharactersModule {
       const index = characters.length;
       const prior = priorNobleByProvince.get(province.i);
       const role = `${this.getProvinceTitle(province.formName)} of ${province.name}`;
-      characters.push(
-        prior
-          ? (this.succeed(index, prior, burg.i, role, successionChance) ??
-              this.createProvinceNoble(index, province, burg))
-          : this.createProvinceNoble(index, province, burg)
-      );
+
+      let noble = prior ? this.succeed(index, prior, burg.i, role, successionChance) : undefined;
+      // captured before createProvinceNoble can rename it via founder-naming below
+      if (prior && !noble) provinceExtinctions.push({ province, prior, originalName: province.name });
+      if (!noble) {
+        noble = this.createProvinceNoble(index, province, burg);
+        this.tryFormCountyMarriageAlliance(noble, province, nobleByProvince, characters);
+      }
+
+      characters.push(noble);
+      nobleByProvince.set(province.i, index);
 
       const liegeIndex = rulerByState.get(province.state);
       if (liegeIndex !== undefined) characters[index].liege = liegeIndex;
+    }
+
+    // a childless noble married into a neighboring county doesn't end their line - the counties merge
+    for (const { province, prior, originalName } of provinceExtinctions) {
+      this.resolveCountyMerge(province, prior, originalName, characters, nobleByProvince);
     }
 
     this.addGuildMastersAndCommoners(characters);
@@ -333,6 +353,65 @@ class CharactersModule {
     state.removed = true;
     survivor.fullName = `${survivor.fullName} (united with ${state.name})`;
     characters[survivorRulerIndex].role = `${characters[survivorRulerIndex].role}, uniting the crown of ${state.name}`;
+  }
+
+  // same idea as tryFormMarriageAlliance, one tier down: a county marries into another county of
+  // the same state - crossing into a different kingdom would leave a county stranded in foreign
+  // territory, so partners are restricted to provinces sharing this one's state
+  private tryFormCountyMarriageAlliance(
+    noble: Character,
+    province: Province,
+    nobleByProvince: Map<number, number>,
+    characters: Character[]
+  ): void {
+    if (!P(MARRIAGE_ALLIANCE_CHANCE)) return;
+
+    const candidates = [...nobleByProvince.entries()]
+      .filter(([provinceId]) => pack.provinces?.[provinceId]?.state === province.state)
+      .map(([, index]) => index);
+    if (!candidates.length) return;
+
+    const partnerIndex = ra(candidates);
+    const partner = characters[partnerIndex];
+    if (!partner || partner.spouseProvince !== undefined) return;
+
+    noble.spouse = partner.name;
+    noble.spouseProvince = partner.province;
+    partner.spouse = noble.name;
+    partner.spouseProvince = noble.province;
+  }
+
+  // a childless noble married into a neighboring county: their land merges into their spouse's,
+  // same mechanism as resolveMarriageMerge but one tier down and without the diplomacy consequences
+  private resolveCountyMerge(
+    province: Province,
+    prior: Character,
+    originalName: string,
+    characters: Character[],
+    nobleByProvince: Map<number, number>
+  ): void {
+    if (prior.spouseProvince === undefined) return;
+
+    const survivor = pack.provinces?.[prior.spouseProvince];
+    if (!survivor || !survivor.i || survivor.removed || survivor.i === province.i) return;
+    if (survivor.state !== province.state) return; // safety net; shouldn't happen by construction
+
+    const survivorNobleIndex = nobleByProvince.get(survivor.i);
+    if (survivorNobleIndex === undefined) return;
+
+    const absorbedNobleIndex = nobleByProvince.get(province.i);
+    if (absorbedNobleIndex !== undefined) {
+      characters[absorbedNobleIndex].removed = true;
+      nobleByProvince.delete(province.i);
+    }
+
+    for (const cellId of pack.cells.i) {
+      if (pack.cells.province[cellId] === province.i) pack.cells.province[cellId] = survivor.i;
+    }
+
+    province.removed = true;
+    survivor.fullName = `${survivor.fullName} (united with ${originalName})`;
+    characters[survivorNobleIndex].role = `${characters[survivorNobleIndex].role}, uniting the county of ${originalName}`;
   }
 
   private createRuler(index: number, state: State, capital: Burg): Character {
