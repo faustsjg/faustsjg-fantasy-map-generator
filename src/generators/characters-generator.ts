@@ -8,6 +8,11 @@ import type { Burg } from "./burgs-generator";
 import type { Province } from "./provinces-generator";
 import type { State } from "./states-generator";
 
+export interface Child {
+  name: string;
+  gender: "m" | "f";
+}
+
 export interface Character {
   i: number;
   name: string;
@@ -17,7 +22,7 @@ export interface Character {
   importance: "notable" | "common";
   dynasty?: string; // house name, notable characters only
   spouse?: string;
-  children?: string[];
+  children?: Child[];
   liege?: number; // index into pack.characters of this character's overlord, if any
   state?: number; // for a ruler: the state.i they rule - lets Eras find them again next era
   province?: number; // for a provincial noble: the province.i they govern, same reason
@@ -117,6 +122,60 @@ const PROVINCE_TITLES: Record<string, string> = {
   Clan: "Clan Chief",
   Dependency: "Governor",
   Area: "Warden"
+};
+
+type SuccessionLaw = "agnatic" | "male-preference" | "absolute" | "elective" | "ultimogeniture";
+
+// The political SYSTEM (hereditary vs. elective, and how) belongs to the state's form, not a
+// county's noble rank - a county inside a Republic follows the Republic's law, not "County"'s.
+// Unmapped forms fall back to male-preference primogeniture, the most common historical default.
+const DEFAULT_SUCCESSION_LAW: SuccessionLaw = "male-preference";
+const SUCCESSION_LAW_BY_FORM: Record<string, SuccessionLaw> = {
+  // Salic-law-style: strictly male-line. A daughter-only family really can go extinct here,
+  // exactly as it did in real history (France, 1328).
+  Empire: "agnatic",
+  Kingdom: "agnatic",
+  "Grand Duchy": "agnatic",
+  Duchy: "agnatic",
+  Principality: "agnatic",
+  // steppe/Mongol-Turkic custom: the youngest child inherited the parents' own hearth and lands
+  Khanate: "ultimogeniture",
+  Khaganate: "ultimogeniture",
+  Horde: "ultimogeniture",
+  Ulus: "ultimogeniture",
+  // republics, communes, and religious offices were typically chosen, not simply inherited
+  Republic: "elective",
+  Federation: "elective",
+  "Trade Company": "elective",
+  "Most Serene Republic": "elective",
+  Oligarchy: "elective",
+  Tetrarchy: "elective",
+  Triumvirate: "elective",
+  Diarchy: "elective",
+  Junta: "elective",
+  League: "elective",
+  Confederation: "elective",
+  "United Republic": "elective",
+  "United Provinces": "elective",
+  Commonwealth: "elective",
+  Heptarchy: "elective",
+  "Free Territory": "elective",
+  Council: "elective",
+  Commune: "elective",
+  Community: "elective",
+  "Free City": "elective",
+  "City-state": "elective",
+  Theocracy: "elective",
+  Brotherhood: "elective",
+  Thearchy: "elective",
+  See: "elective",
+  "Holy State": "elective",
+  Diocese: "elective",
+  Bishopric: "elective",
+  Eparchy: "elective",
+  Exarchate: "elective",
+  Patriarchate: "elective",
+  Imamah: "elective"
 };
 
 // Ordinary people worth naming without inventing a plot for them - just part of the world
@@ -243,7 +302,8 @@ class CharactersModule {
       const prior = state.lock ? priorRulerByState.get(state.i) : undefined;
       const role = `${this.getRulerTitle(state.formName)} of ${state.name}`;
 
-      let ruler = prior ? this.succeed(index, prior, capital.i, role, yearsPerEra) : undefined;
+      const law = this.getSuccessionLaw(state.formName);
+      let ruler = prior ? this.succeed(index, prior, capital.i, role, yearsPerEra, law) : undefined;
       if (prior && !ruler) extinctions.push({ state, prior });
       if (!ruler) {
         ruler = this.createRuler(index, state, capital);
@@ -273,7 +333,9 @@ class CharactersModule {
       const prior = priorNobleByProvince.get(province.i);
       const role = `${this.getProvinceTitle(province.formName)} of ${province.name}`;
 
-      let noble = prior ? this.succeed(index, prior, burg.i, role, yearsPerEra) : undefined;
+      // a county follows its own kingdom's succession custom, not a rule tied to its noble rank
+      const law = this.getSuccessionLaw(pack.states[province.state]?.formName);
+      let noble = prior ? this.succeed(index, prior, burg.i, role, yearsPerEra, law) : undefined;
       // captured before createProvinceNoble can rename it via founder-naming below
       if (prior && !noble) provinceExtinctions.push({ province, prior, originalName: province.name });
       if (!noble) {
@@ -518,7 +580,8 @@ class CharactersModule {
     prior: Character,
     burg: number,
     role: string,
-    yearsPerEra: number
+    yearsPerEra: number,
+    law: SuccessionLaw
   ): Character | undefined {
     const lifespan = this.getLifespanYears(prior.culture);
     const age = (prior.age ?? this.getStartingAge(lifespan)) + yearsPerEra;
@@ -530,8 +593,8 @@ class CharactersModule {
       return { ...stillRules, i: index, burg, role, age };
     }
 
-    const heirName = prior.children?.[0];
-    if (!heirName) return undefined; // no heir survives - the dynasty ends here
+    const heirName = this.getHeir(prior.children, law);
+    if (!heirName) return undefined; // no heir survives under this law - the dynasty ends here
 
     return {
       // the heir carries on the same house; createNoble would otherwise roll a fresh, unrelated one
@@ -540,6 +603,27 @@ class CharactersModule {
       state: prior.state,
       province: prior.province
     };
+  }
+
+  private getSuccessionLaw(formName?: string): SuccessionLaw {
+    if (!formName) return DEFAULT_SUCCESSION_LAW;
+    const base = formName.startsWith("Divine ") ? formName.slice("Divine ".length) : formName;
+    return SUCCESSION_LAW_BY_FORM[base] ?? DEFAULT_SUCCESSION_LAW;
+  }
+
+  // who inherits depends on the law, not just birth order - agnatic succession can go extinct
+  // with daughters alone (as it really did, e.g. France in 1328), elective doesn't care about
+  // birth order at all, and ultimogeniture picks the last child rather than the first
+  private getHeir(children: Child[] | undefined, law: SuccessionLaw): string | undefined {
+    if (!children?.length) return undefined;
+
+    if (law === "elective") return ra(children).name;
+    if (law === "ultimogeniture") return children[children.length - 1].name;
+    if (law === "absolute") return children[0].name;
+
+    const sons = children.filter(child => child.gender === "m");
+    if (law === "agnatic") return sons[0]?.name;
+    return (sons[0] ?? children[0]).name; // male-preference: eldest son, else eldest child
   }
 
   private getLifespanYears(culture: number): number {
@@ -606,14 +690,19 @@ class CharactersModule {
 
   // a lightweight family snapshot, not a simulated lineage - most nobles have a spouse and a
   // handful of children, some don't
-  private getFamily(culture: number): { spouse?: string; children?: string[] } {
+  private getFamily(culture: number): { spouse?: string; children?: Child[] } {
     if (!P(0.85)) return {};
 
     const spouse = Names.getCulture(culture);
     const childrenCount = ra([0, 1, 1, 2, 2, 3]);
     if (!childrenCount) return { spouse };
 
-    const children = Array.from({ length: childrenCount }, () => Names.getCulture(culture));
+    // the name-bases don't distinguish gender (the same list generates every name), so gender is
+    // assigned separately, at even odds - it still lets a succession law meaningfully apply
+    const children: Child[] = Array.from({ length: childrenCount }, () => ({
+      name: Names.getCulture(culture),
+      gender: P(0.5) ? "m" : "f"
+    }));
     return { spouse, children };
   }
 

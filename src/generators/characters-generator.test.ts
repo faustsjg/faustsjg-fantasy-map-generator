@@ -398,7 +398,10 @@ describe("CharactersModule.applySuccession", () => {
       dynasty: "House of Old",
       state: 1,
       spouse: "OldSpouse",
-      children: ["Heir1", "Heir2"],
+      children: [
+        { name: "Heir1", gender: "m" },
+        { name: "Heir2", gender: "f" }
+      ],
       ...overrides
     };
   }
@@ -528,7 +531,7 @@ describe("CharactersModule.applySuccession", () => {
       state: 2,
       spouse: "RulerA",
       spouseState: 1,
-      children: ["BHeir"] // has its own heir - never goes extinct
+      children: [{ name: "BHeir", gender: "m" }] // has its own heir - never goes extinct
     };
 
     globalThis.pack = {
@@ -588,7 +591,7 @@ describe("CharactersModule.applySuccession", () => {
       province: 2,
       spouse: "NobleA",
       spouseProvince: 1,
-      children: ["BHeir"] // has its own heir - never goes extinct
+      children: [{ name: "BHeir", gender: "m" }] // has its own heir - never goes extinct
     };
 
     globalThis.pack = {
@@ -634,7 +637,7 @@ describe("CharactersModule.applySuccession", () => {
       dynasty: "House Elf",
       state: 1,
       age: 100, // well under half of a 700-year elven lifespan
-      children: ["ElfHeir"]
+      children: [{ name: "ElfHeir", gender: "m" }]
     };
     const goblinRuler = {
       i: 1,
@@ -646,7 +649,7 @@ describe("CharactersModule.applySuccession", () => {
       dynasty: "House Goblin",
       state: 2,
       age: 100, // well past a 40-year goblin lifespan
-      children: ["GoblinHeir"]
+      children: [{ name: "GoblinHeir", gender: "m" }]
     };
 
     globalThis.pack = {
@@ -667,5 +670,86 @@ describe("CharactersModule.applySuccession", () => {
     const goblin = globalThis.pack.characters!.find((c: any) => c.state === 2);
     expect(elf!.name).toBe("Elf"); // still well within an elf's prime - unchanged
     expect(goblin!.name).toBe("GoblinHeir"); // a goblin this old has died and passed the crown on
+  });
+
+  it("lets a daughter-only line go extinct under agnatic (Salic-style) succession", () => {
+    Math.random = () => 0; // succession always triggers
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Kingdom", capital: 1, lock: true })],
+      guilds: [],
+      characters: [makePriorRuler({ children: [{ name: "OnlyDaughter", gender: "f" }] })],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+    const ruler = globalThis.pack.characters!.find((c: any) => c.state === 1);
+    expect(ruler!.name).not.toBe("OnlyDaughter"); // agnatic law skips her - the line dies out
+    expect(ruler!.dynasty).not.toBe("House of Old"); // a fresh, unrelated house rises instead
+  });
+
+  it("lets a younger son inherit ahead of an elder daughter under male-preference succession", () => {
+    Math.random = () => 0; // succession always triggers
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      // "Tsardom" isn't in the succession-law table, so it falls back to male-preference
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Tsardom", capital: 1, lock: true })],
+      guilds: [],
+      characters: [
+        makePriorRuler({
+          children: [
+            { name: "ElderDaughter", gender: "f" },
+            { name: "YoungerSon", gender: "m" }
+          ]
+        })
+      ],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+    const ruler = globalThis.pack.characters!.find((c: any) => c.state === 1);
+    expect(ruler!.name).toBe("YoungerSon");
+  });
+
+  it("lets the youngest child inherit under ultimogeniture, regardless of gender", () => {
+    Math.random = () => 0; // succession always triggers
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Khanate", capital: 1, lock: true })],
+      guilds: [],
+      characters: [
+        makePriorRuler({
+          children: [
+            { name: "Eldest", gender: "m" },
+            { name: "Youngest", gender: "f" }
+          ]
+        })
+      ],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+    const ruler = globalThis.pack.characters!.find((c: any) => c.state === 1);
+    expect(ruler!.name).toBe("Youngest");
+  });
+
+  it("lets an elective succession pass to a daughter where agnatic succession would not", () => {
+    Math.random = () => 0; // succession always triggers
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Republic", capital: 1, lock: true })],
+      guilds: [],
+      characters: [makePriorRuler({ children: [{ name: "OnlyDaughter", gender: "f" }] })],
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+    const ruler = globalThis.pack.characters!.find((c: any) => c.state === 1);
+    expect(ruler!.name).toBe("OnlyDaughter");
+    expect(ruler!.dynasty).toBe("House of Old"); // elected from the same family, not a stranger
   });
 });

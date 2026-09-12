@@ -201,7 +201,7 @@ function downloadCharactersCsv(): void {
       character.dynasty ?? "",
       getLiegeName(character),
       character.spouse ?? "",
-      `"${(character.children ?? []).join("; ")}"`,
+      `"${(character.children ?? []).map(child => child.name).join("; ")}"`,
       getBurgName(character),
       getCultureName(character),
       `"${(character.bio ?? "").replace(/"/g, '""')}"`
