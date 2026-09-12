@@ -3,7 +3,7 @@
 // Titles, dynasties and family ties are all derived procedurally from the existing state/province
 // data (form, diplomacy) - nothing here is AI-generated. Only the on-demand bio (characters-overview.ts)
 // calls out to the AI generator, and only when a user clicks for it.
-import { minmax, P, ra, rand } from "@/utils";
+import { getRandomColor, minmax, P, ra, rand } from "@/utils";
 import type { Burg } from "./burgs-generator";
 import type { Province } from "./provinces-generator";
 import type { State } from "./states-generator";
@@ -233,6 +233,12 @@ const LIFESPAN_YEARS_BY_BASE: Record<number, number> = {
 // childless death can merge the two realms (Aragon+Catalonia, Castile+Aragon, England+Scotland...)
 const MARRIAGE_ALLIANCE_CHANCE = 0.15;
 
+// after a hereditary handover, a chance the passed-over sibling's claim isn't just symbolic - the
+// realm actually splits (partible inheritance was a real, if declining, alternative to primogeniture
+// through most of the medieval period). Scoped to agnatic/male-preference successions only -
+// elective and ultimogeniture already resolve without a "disputed succession" flavor.
+const SUCCESSION_CRISIS_CHANCE = 0.12;
+
 class CharactersModule {
   generate(): void {
     const characters: Character[] = [];
@@ -293,7 +299,9 @@ class CharactersModule {
     const rulerByState = new Map<number, number>();
     const extinctions: { state: State; prior: Character }[] = [];
 
-    for (const state of pack.states) {
+    // snapshotted so a splinter state created mid-loop (see trySplitRealm) isn't re-visited this
+    // same pass - it gets its own succession/lock decision starting next era, like any other state
+    for (const state of [...pack.states]) {
       if (!state.i || state.removed) continue;
       const capital = pack.burgs[state.capital];
       if (!capital || !capital.i || capital.removed) continue;
@@ -303,8 +311,10 @@ class CharactersModule {
       const role = `${this.getRulerTitle(state.formName)} of ${state.name}`;
 
       const law = this.getSuccessionLaw(state.formName);
-      let ruler = prior ? this.succeed(index, prior, capital.i, role, yearsPerEra, law) : undefined;
-      if (prior && !ruler) extinctions.push({ state, prior });
+      const succeeded = prior ? this.succeed(index, prior, capital.i, role, yearsPerEra, law) : undefined;
+      if (prior && !succeeded) extinctions.push({ state, prior });
+
+      let ruler = succeeded;
       if (!ruler) {
         ruler = this.createRuler(index, state, capital);
         this.tryFormMarriageAlliance(ruler, state, rulerByState, characters);
@@ -312,6 +322,14 @@ class CharactersModule {
 
       characters.push(ruler);
       rulerByState.set(state.i, index);
+
+      // a clean hereditary handover (not "still rules", not extinction) can still be contested -
+      // scoped to laws with a fixed line of succession, where a passed-over sibling has a real claim
+      const handedOver = succeeded && prior && succeeded.name !== prior.name;
+      if (handedOver && (law === "agnatic" || law === "male-preference") && P(SUCCESSION_CRISIS_CHANCE)) {
+        const runnerUp = this.getRunnerUpHeir(prior?.children, law, succeeded.name);
+        if (runnerUp) this.trySplitRealm(state, index, runnerUp, characters, rulerByState);
+      }
     }
     this.linkStateLieges(characters, rulerByState);
 
@@ -448,6 +466,69 @@ class CharactersModule {
     state.removed = true;
     survivor.fullName = `${survivor.fullName} (united with ${state.name})`;
     characters[survivorRulerIndex].role = `${characters[survivorRulerIndex].role}, uniting the crown of ${state.name}`;
+  }
+
+  // the inverse of a merge: carves roughly half of the realm's provinces into a brand new state
+  // for the passed-over sibling, a cadet branch of the same house. Needs at least 2 provinces to
+  // mean anything - a single-province realm just isn't divisible this way, so it's left alone
+  private trySplitRealm(
+    state: State,
+    primaryRulerIndex: number,
+    runnerUp: Child,
+    characters: Character[],
+    rulerByState: Map<number, number>
+  ): void {
+    const provinces = (pack.provinces ?? []).filter(province => province.i && !province.removed && province.state === state.i);
+    if (provinces.length < 2) return;
+
+    const splinterProvinces = provinces.slice(Math.max(1, Math.floor(provinces.length / 2)));
+    const seatProvince = splinterProvinces[0];
+    const seatBurg = pack.burgs[seatProvince.burg];
+    if (!seatBurg || !seatBurg.i || seatBurg.removed) return;
+
+    const newStateId = pack.states.length;
+    const newState: State = {
+      i: newStateId,
+      name: seatProvince.name,
+      expansionism: state.expansionism,
+      capital: seatBurg.i,
+      type: state.type,
+      center: seatBurg.cell,
+      culture: state.culture,
+      coa: state.coa,
+      form: state.form,
+      formName: state.formName,
+      color: getRandomColor(),
+      salesTax: state.salesTax,
+      pollTax: state.pollTax,
+      treasury: 0
+    };
+    // a simpler fallback than States.getFullName's adjective-form rules - good enough for a
+    // splinter state, and keeps this module free of a cross-generator dependency
+    newState.fullName = `${newState.formName} of ${newState.name}`;
+    pack.states.push(newState);
+
+    const splinterProvinceIds = new Set(splinterProvinces.map(province => province.i));
+    for (const province of splinterProvinces) province.state = newStateId;
+    for (const cellId of pack.cells.i) {
+      if (splinterProvinceIds.has(pack.cells.province?.[cellId])) pack.cells.state[cellId] = newStateId;
+    }
+    for (const burg of pack.burgs) {
+      if (splinterProvinceIds.has(pack.cells.province?.[burg.cell])) burg.state = newStateId;
+    }
+
+    const newRuler = this.createNoble(characters.length, {
+      burg: seatBurg.i,
+      culture: newState.culture,
+      name: runnerUp.name,
+      role: `${this.getRulerTitle(newState.formName)} of ${newState.name}`
+    });
+    newRuler.state = newStateId;
+    newRuler.dynasty = characters[primaryRulerIndex].dynasty; // same house, a cadet branch
+    rulerByState.set(newStateId, characters.length);
+    characters.push(newRuler);
+
+    characters[primaryRulerIndex].role = `${characters[primaryRulerIndex].role} (realm divided among siblings)`;
   }
 
   // one pass over every cell, recording which provinces actually share a border - so county
@@ -624,6 +705,17 @@ class CharactersModule {
     const sons = children.filter(child => child.gender === "m");
     if (law === "agnatic") return sons[0]?.name;
     return (sons[0] ?? children[0]).name; // male-preference: eldest son, else eldest child
+  }
+
+  // the sibling who would inherit next under the same law, if the primary heir's claim didn't
+  // stand - the seed of a succession crisis, not a real title until trySplitRealm acts on it
+  private getRunnerUpHeir(children: Child[] | undefined, law: SuccessionLaw, primaryHeirName: string): Child | undefined {
+    const rest = children?.filter(child => child.name !== primaryHeirName);
+    if (!rest?.length) return undefined;
+
+    if (law === "agnatic") return rest.find(child => child.gender === "m");
+    const sons = rest.filter(child => child.gender === "m");
+    return sons[0] ?? rest[0]; // male-preference
   }
 
   private getLifespanYears(culture: number): number {

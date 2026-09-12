@@ -752,4 +752,73 @@ describe("CharactersModule.applySuccession", () => {
     expect(ruler!.name).toBe("OnlyDaughter");
     expect(ruler!.dynasty).toBe("House of Old"); // elected from the same family, not a stranger
   });
+
+  it("splits the realm between siblings when a succession crisis occurs", () => {
+    Math.random = () => 0; // succession triggers, and so does the crisis roll
+
+    const priorRuler = makePriorRuler({
+      children: [
+        { name: "ElderSon", gender: "m" },
+        { name: "YoungerSon", gender: "m" }
+      ]
+    });
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1, cell: 1 }), makeBurg({ i: 2, cell: 3 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Kingdom", capital: 1, lock: true })],
+      guilds: [],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1, burg: 1, name: "Homeshire", fullName: "Homeshire County" }),
+        makeProvince({ i: 2, state: 1, burg: 2, name: "Splitshire", fullName: "Splitshire County" })
+      ],
+      characters: [priorRuler],
+      cells: { i: [0, 1, 2, 3], state: [0, 1, 1, 1], province: [0, 1, 1, 2] },
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    const primaryRuler = globalThis.pack.characters!.find((c: any) => c.name === "ElderSon");
+    const splinterRuler = globalThis.pack.characters!.find((c: any) => c.name === "YoungerSon");
+    expect(primaryRuler).toBeDefined();
+    expect(splinterRuler).toBeDefined();
+    expect(splinterRuler!.dynasty).toBe(primaryRuler!.dynasty); // same house, a cadet branch
+    expect(splinterRuler!.state).not.toBe(primaryRuler!.state);
+    expect(primaryRuler!.role).toContain("realm divided among siblings");
+
+    const newState = globalThis.pack.states.find((s: any) => s.i === splinterRuler!.state);
+    expect(newState).toBeDefined();
+    expect(newState!.name).toBe("Splitshire");
+    expect(globalThis.pack.provinces[2].state).toBe(newState!.i);
+    expect(globalThis.pack.provinces[1].state).toBe(primaryRuler!.state); // the original half stays put
+    expect(Array.from(globalThis.pack.cells.state)).toEqual([0, primaryRuler!.state, primaryRuler!.state, newState!.i]);
+  });
+
+  it("does not split a realm with fewer than two provinces", () => {
+    Math.random = () => 0; // succession triggers, and so would the crisis roll, if it could apply
+
+    const priorRuler = makePriorRuler({
+      children: [
+        { name: "ElderSon", gender: "m" },
+        { name: "YoungerSon", gender: "m" }
+      ]
+    });
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Kingdom", capital: 1, lock: true })],
+      guilds: [],
+      provinces: [0 as any, makeProvince({ i: 1, state: 1, burg: 1 })],
+      characters: [priorRuler],
+      cells: { i: [0, 1], state: [0, 1], province: [0, 1] },
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    expect(globalThis.pack.states).toHaveLength(2); // no new state was created
+    const primaryRuler = globalThis.pack.characters!.find((c: any) => c.name === "ElderSon");
+    expect(primaryRuler!.role).not.toContain("divided");
+  });
 });
