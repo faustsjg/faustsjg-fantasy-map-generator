@@ -717,7 +717,10 @@ describe("CharactersModule.applySuccession", () => {
 
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1 })],
-      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Khanate", form: "Monarchy", capital: 1, lock: true })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Testland", formName: "Khanate", form: "Monarchy", capital: 1, lock: true })
+      ],
       guilds: [],
       characters: [
         makePriorRuler({
@@ -740,7 +743,10 @@ describe("CharactersModule.applySuccession", () => {
 
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1 })],
-      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Republic", form: "Republic", capital: 1, lock: true })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Testland", formName: "Republic", form: "Republic", capital: 1, lock: true })
+      ],
       guilds: [],
       characters: [makePriorRuler({ children: [{ name: "OnlyDaughter", gender: "f" }] })],
       cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Republic: "elective" } }]
