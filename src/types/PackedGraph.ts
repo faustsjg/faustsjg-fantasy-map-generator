@@ -1,6 +1,7 @@
 import type { AddedLabel } from "@/generators/added-labels";
 import type { Biome } from "@/generators/biomes-generator";
 import type { Burg } from "@/generators/burgs-generator";
+import type { Character } from "@/generators/characters-generator";
 import type { Culture } from "@/generators/cultures-generator";
 import type { Era } from "@/generators/eras-generator";
 import type { Feature } from "@/generators/features";
@@ -78,4 +79,5 @@ export interface PackedGraph {
   eras?: Era[];
   aiTerrainEdits?: string[];
   guilds?: Guild[];
+  characters?: Character[];
 }

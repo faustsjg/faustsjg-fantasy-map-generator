@@ -2,6 +2,7 @@ import { refreshEditors } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
 import { tip } from "@/components/tooltips";
 import { Controllers } from "@/controllers";
+import { Characters } from "@/generators/characters-generator";
 import { Emblems } from "@/generators/emblems-generator";
 import { Guilds } from "@/generators/guilds-generator";
 import { Population } from "@/generators/population-generator";
@@ -42,6 +43,7 @@ ensureEl("toolsContent").addEventListener("click", event => {
   else if (buttonId === "overviewMarkersButton") void Controllers.MarkersOverview.open();
   else if (buttonId === "overviewMarketsButton") void Controllers.MarketsOverview.open();
   else if (buttonId === "overviewGuildsButton") void Controllers.GuildsOverview.open();
+  else if (buttonId === "overviewCharactersButton") void Controllers.CharactersOverview.open();
   else if (buttonId === "overviewCellsButton") void Controllers.CellInfo.open();
   else if (buttonId === "openMinimapButton") void Controllers.Minimap.open();
   else if (buttonId === "configRegenerateMarkers") void Controllers.MarkersSettings.open();
@@ -103,6 +105,7 @@ function regenerate(event: MouseEvent, button: string): void {
   else if (button === "regenerateBurgs") regenerateBurgs();
   else if (button === "regenerateGoods") regenerateGoods();
   else if (button === "regenerateGuilds") regenerateGuilds();
+  else if (button === "regenerateCharacters") regenerateCharacters();
   else if (button === "regenerateMarkets") regenerateMarkets();
   else if (button === "regenerateEconomy") regenerateEconomy();
   else if (button === "regenerateProduction") regenerateProduction();
@@ -171,6 +174,10 @@ function regenerateGoods(): void {
 
 function regenerateGuilds(): void {
   Guilds.regenerate();
+}
+
+function regenerateCharacters(): void {
+  Characters.regenerate();
 }
 
 function regenerateMarkets(): void {

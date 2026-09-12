@@ -11,6 +11,7 @@ export const Controllers = createRegistry({
   BurgGroupEditor: () => import("@/controllers/burg-group-editor").then(m => m.BurgGroupEditor),
   BurgsOverview: () => import("@/controllers/burgs-overview").then(m => m.BurgsOverview),
   CellInfo: () => import("@/controllers/cell-info").then(m => m.CellInfo),
+  CharactersOverview: () => import("@/controllers/characters-overview").then(m => m.CharactersOverview),
   ChartsOverview: () => import("@/controllers/charts-overview").then(m => m.ChartsOverview),
   CoastlineEditor: () => import("@/controllers/coastline-editor").then(m => m.CoastlineEditor),
   CoastlineVertexEditor: () => import("@/controllers/coastline-vertex-editor").then(m => m.CoastlineVertexEditor),

@@ -1,4 +1,5 @@
 // Canonical generation sequence, as a declared pipeline instead of a hand-written call list. See docs/architecture/generation-pipeline.md.
+import { Characters } from "@/generators/characters-generator";
 import { Guilds } from "@/generators/guilds-generator";
 import { Pipeline, type PipelineStep } from "@/generators/pipeline";
 import { Population } from "@/generators/population-generator";
@@ -40,6 +41,7 @@ const generationPipelineSteps = [
   { id: "markets", run: () => Markets.generate() },
   { id: "production", run: () => Production.produce() },
   { id: "guilds", run: () => Guilds.generate() },
+  { id: "characters", run: () => Characters.generate() },
   { id: "taxes", run: () => States.collectTaxes() },
   { id: "military", run: () => Military.generate() },
   { id: "markers", run: () => Markers.generate() },
@@ -89,6 +91,7 @@ const erasePipelineSteps = [
   { id: "markets", run: () => Markets.generate() },
   { id: "production", run: () => Production.produce() },
   { id: "guilds", run: () => Guilds.generate() },
+  { id: "characters", run: () => Characters.generate() },
   { id: "taxes", run: () => States.collectTaxes() },
   { id: "military", run: () => Military.generate() },
   { id: "markers", run: () => Markers.generate() },
