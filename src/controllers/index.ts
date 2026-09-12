@@ -21,6 +21,7 @@ export const Controllers = createRegistry({
   DistributionEditor: () => import("@/controllers/goods-distribution-editor").then(m => m.DistributionEditor),
   ElevationProfile: () => import("@/controllers/elevation-profile").then(m => m.ElevationProfile),
   ErasEditor: () => import("@/controllers/eras-editor").then(m => m.ErasEditor),
+  ExpandWorldTool: () => import("@/controllers/expand-world-tool").then(m => m.ExpandWorldTool),
   EmblemsEditor: () => import("@/controllers/emblems-editor").then(m => m.EmblemsEditor),
   GoodEditor: () => import("@/controllers/good-editor").then(m => m.GoodEditor),
   GoodsEditor: () => import("@/controllers/goods-editor").then(m => m.GoodsEditor),
