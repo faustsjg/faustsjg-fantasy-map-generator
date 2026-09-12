@@ -513,7 +513,13 @@ class CharactersModule {
   // starts a fresh house instead. Mortality is driven by age against their own species' lifespan,
   // not a flat probability - a 40-year-old dwarf and a 40-year-old goblin are nowhere near the
   // same point in their lives
-  private succeed(index: number, prior: Character, burg: number, role: string, yearsPerEra: number): Character | undefined {
+  private succeed(
+    index: number,
+    prior: Character,
+    burg: number,
+    role: string,
+    yearsPerEra: number
+  ): Character | undefined {
     const lifespan = this.getLifespanYears(prior.culture);
     const age = (prior.age ?? this.getStartingAge(lifespan)) + yearsPerEra;
 
