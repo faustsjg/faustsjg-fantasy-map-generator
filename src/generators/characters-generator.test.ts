@@ -87,7 +87,14 @@ describe("CharactersModule.generate", () => {
       burgs: [0 as any, makeBurg({ i: 1 }), makeBurg({ i: 2 })],
       states: [
         0 as any,
-        makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, diplomacy: ["x", "x", "x"], neighbors: [2] }),
+        makeState({
+          i: 1,
+          name: "Kingland",
+          formName: "Kingdom",
+          capital: 1,
+          diplomacy: ["x", "x", "x"],
+          neighbors: [2]
+        }),
         makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, diplomacy: ["x", "x", "x"], neighbors: [1] })
       ],
       guilds: [],

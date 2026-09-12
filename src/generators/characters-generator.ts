@@ -412,7 +412,10 @@ class CharactersModule {
     if (!neighboringProvinceIds) return;
 
     const candidates = [...nobleByProvince.entries()]
-      .filter(([provinceId]) => neighboringProvinceIds.has(provinceId) && pack.provinces?.[provinceId]?.state === province.state)
+      .filter(
+        ([provinceId]) =>
+          neighboringProvinceIds.has(provinceId) && pack.provinces?.[provinceId]?.state === province.state
+      )
       .map(([, index]) => index);
     if (!candidates.length) return;
 
