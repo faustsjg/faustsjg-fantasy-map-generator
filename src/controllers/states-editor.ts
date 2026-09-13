@@ -127,7 +127,7 @@ const columns: EditorColumn<State>[] = [
     hidden: true,
     sortBy: s => (s.i ? s.expansionism || 0 : 0)
   },
-  { key: "actions", width: "4.2em", permanent: true, align: "right" }
+  { key: "actions", width: "5.2em", permanent: true, align: "right" }
 ];
 
 const statesTable = initEditorTable<State>({
@@ -249,6 +249,7 @@ function renderDialog(): void {
     else if (classList.contains("icon-target"))
       highlightElement(select("#regions").select(`#state${stateId}`).node() as Element, 4);
     else if (classList.contains("icon-trash-empty")) stateRemovePrompt(stateId);
+    else if (classList.contains("icon-users")) void Controllers.DynastyOverview.open(stateId);
     else if (classList.contains("icon-lock") || classList.contains("icon-lock-open"))
       updateLockStatus(stateId, classList);
   });
@@ -417,6 +418,7 @@ function renderStatesPage(view: TableView<State>): void {
       <div data-col="actions">
         <span data-tip="Locate the state" class="icon-target"></span>
         <span data-tip="Toggle state focus" class="icon-pin ${focused ? "" : " inactive"}"></span>
+        <span data-tip="View the ruling dynasty and line of succession" class="icon-users"></span>
         <span data-tip="Lock the state to protect it from re-generation" class="icon-lock${
           s.lock ? "" : "-open"
         }"></span>

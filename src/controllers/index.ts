@@ -20,6 +20,7 @@ export const Controllers = createRegistry({
   CulturesEditor: () => import("@/controllers/cultures-editor").then(m => m.CulturesEditor),
   DiplomacyEditor: () => import("@/controllers/diplomacy-editor").then(m => m.DiplomacyEditor),
   DistributionEditor: () => import("@/controllers/goods-distribution-editor").then(m => m.DistributionEditor),
+  DynastyOverview: () => import("@/controllers/dynasty-overview").then(m => m.DynastyOverview),
   ElevationProfile: () => import("@/controllers/elevation-profile").then(m => m.ElevationProfile),
   ErasEditor: () => import("@/controllers/eras-editor").then(m => m.ErasEditor),
   ExpandWorldTool: () => import("@/controllers/expand-world-tool").then(m => m.ExpandWorldTool),
