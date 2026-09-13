@@ -234,6 +234,79 @@ describe("RebellionsModule.resolve", () => {
     expect(globalThis.pack.states).toHaveLength(4);
   });
 
+  it("secedes an isolated province but not an equally-far, equally-culture-matched embedded one", () => {
+    // P2 borders only foreign (state 2) provinces - 0 same-state neighbors. P3 borders P1 and P4,
+    // both state 1 - 2 same-state neighbors. Average across every province on the map (P1..P6) is
+    // 4/6 ≈ 0.667, so P2's ratio is 0 (full +0.15 isolation bonus) and P3's is 3 (clamped to no
+    // bonus at all, at or above average). Neither has any other unrest factor present.
+    vi.spyOn(Math, "random").mockReturnValue(0.1); // P2: base(0.03)+isolation(0.15)=0.18 > 0.10; P3: base(0.03) < 0.10
+    globalThis.pack = {
+      states: [
+        0 as any,
+        {
+          i: 1,
+          name: "Realm",
+          fullName: "Kingdom of Realm",
+          area: 100,
+          expansionism: 1,
+          capital: 1,
+          culture: 5,
+          coa: {},
+          formName: "Kingdom",
+          salesTax: 0.1,
+          pollTax: 0.1,
+          treasury: 0,
+          removed: false
+        },
+        {
+          i: 2,
+          name: "Foreign",
+          fullName: "Kingdom of Foreign",
+          area: 100,
+          expansionism: 1,
+          capital: 5,
+          culture: 5,
+          coa: {},
+          formName: "Kingdom",
+          salesTax: 0.1,
+          pollTax: 0.1,
+          treasury: 0,
+          removed: false
+        }
+      ],
+      burgs: [
+        0 as any,
+        { i: 1, x: 0, y: 0, cell: 1, culture: 5, state: 1 }, // Realm's capital
+        { i: 2, x: 0, y: 0, cell: 2, culture: 5, state: 1 }, // isolated - all-foreign neighbors
+        { i: 3, x: 0, y: 0, cell: 3, culture: 5, state: 1 }, // embedded - all-same-state neighbors
+        { i: 4, x: 0, y: 0, cell: 4, culture: 5, state: 1 },
+        { i: 5, x: 0, y: 0, cell: 5, culture: 5, state: 2 }, // Foreign's capital
+        { i: 6, x: 0, y: 0, cell: 6, culture: 5, state: 2 }
+      ],
+      provinces: [
+        0 as any,
+        { i: 1, state: 1, burg: 1, name: "Capitalshire", removed: false },
+        { i: 2, state: 1, burg: 2, name: "Isolshire", removed: false },
+        { i: 3, state: 1, burg: 3, name: "Coreshire", removed: false },
+        { i: 4, state: 1, burg: 4, name: "Coreshire2", removed: false },
+        { i: 5, state: 2, burg: 5, name: "Otherland", removed: false },
+        { i: 6, state: 2, burg: 6, name: "Otherland2", removed: false }
+      ],
+      cells: {
+        i: [0, 1, 2, 3, 4, 5, 6],
+        c: [[], [3], [5, 6], [1, 4], [3], [2], [2]],
+        province: [0, 1, 2, 3, 4, 5, 6],
+        state: [0, 1, 1, 1, 1, 2, 2],
+        f: [0, 1, 1, 1, 1, 1, 1]
+      }
+    } as any;
+
+    Rebellions.resolve();
+
+    expect(globalThis.pack.provinces[2].state).not.toBe(1); // isolated - seceded
+    expect(globalThis.pack.provinces[3].state).toBe(1); // deeply embedded - stayed put
+  });
+
   it("reassigns the seceding province's cells and burgs, and clears its annexedYear", () => {
     vi.spyOn(Math, "random").mockReturnValue(0);
     globalThis.pack = makePack({ province2Culture: 9, province2AnnexedYear: 1000 });

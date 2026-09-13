@@ -10,6 +10,10 @@
 //    to hold than raw distance alone suggests - the classic colonial-independence pattern)
 //  - how recently it was annexed by force (war conquest or a marriage merger) - freshly conquered
 //    land is unstable, but that wound heals over a few generations
+//  - how isolated it is within its own realm: a province boxed in mostly by fellow provinces of
+//    the same state feels the pressure of belonging (La Rioja, deep in Spain's interior); one
+//    surrounded mostly by foreign territory doesn't (Catalonia or Galicia, each bordering far
+//    fewer provinces of their own state) - independent of whether those neighbors share its culture
 // A well-garrisoned state dampens all of the above at once, Civilization-style: a strong army
 // keeps a realm together even where it has every structural reason to fray, while a thin one
 // makes those same reasons bite harder.
@@ -25,6 +29,7 @@ const MAX_DISTANCE_BONUS = 0.15;
 const ISLAND_BONUS = 0.2;
 const MAX_RECENT_ANNEXATION_BONUS = 0.25;
 const RECENT_ANNEXATION_DECAY_YEARS = 150; // ~5 eras at the default 30 years/era - a few generations
+const MAX_ISOLATION_BONUS = 0.15;
 const MIN_UNREST = 0.01;
 const MAX_UNREST = 0.65;
 const MILITARY_DAMPENING_STRENGTH = 0.4;
@@ -40,6 +45,11 @@ class RebellionsModule {
 
     const validStates = pack.states.filter(s => s.i && !s.removed);
     const averageTroopsPerArea = mean(validStates.map(getTroopsPerArea)) || 0;
+
+    const provinceAdjacency = this.buildProvinceAdjacency();
+    const allValidProvinces = (pack.provinces ?? []).filter(p => p.i && !p.removed);
+    const averageSameStateNeighbors =
+      mean(allValidProvinces.map(p => this.countSameStateNeighbors(p, provinceAdjacency))) || 0;
 
     for (const state of validStates) {
       const provinces = (pack.provinces ?? []).filter(p => p.i && !p.removed && p.state === state.i);
@@ -59,7 +69,16 @@ class RebellionsModule {
       for (const province of provinces) {
         if (province.i === capitalProvinceId) continue; // the capital itself never rebels against its own crown
 
-        if (P(this.getUnrestChance(province, state, capitalBurg, militaryDampening))) {
+        const sameStateNeighbors = this.countSameStateNeighbors(province, provinceAdjacency);
+        const chance = this.getUnrestChance(
+          province,
+          state,
+          capitalBurg,
+          militaryDampening,
+          sameStateNeighbors,
+          averageSameStateNeighbors
+        );
+        if (P(chance)) {
           this.secede(province, state);
           anyChange = true;
         }
@@ -73,7 +92,9 @@ class RebellionsModule {
     province: Province,
     state: State,
     capitalBurg: { x: number; y: number; cell: number },
-    militaryDampening: number
+    militaryDampening: number,
+    sameStateNeighbors: number,
+    averageSameStateNeighbors: number
   ): number {
     const provinceBurg = pack.burgs[province.burg];
     if (!provinceBurg?.i) return 0;
@@ -90,14 +111,49 @@ class RebellionsModule {
     const recentAnnexationBonus =
       minmax(1 - yearsSinceAnnexation / RECENT_ANNEXATION_DECAY_YEARS, 0, 1) * MAX_RECENT_ANNEXATION_BONUS;
 
+    // fewer same-state neighbors than the era's average - less peer pressure to stay put
+    const isolationRatio = averageSameStateNeighbors > 0 ? sameStateNeighbors / averageSameStateNeighbors : 1;
+    const isolationBonus = minmax(1 - isolationRatio, 0, 1) * MAX_ISOLATION_BONUS;
+
     const rawChance =
       BASE_UNREST +
       (cultureMismatch ? CULTURE_MISMATCH_BONUS : 0) +
       distanceBonus +
       (onDifferentLandmass ? ISLAND_BONUS : 0) +
-      recentAnnexationBonus;
+      recentAnnexationBonus +
+      isolationBonus;
 
     return minmax(rawChance * militaryDampening, MIN_UNREST, MAX_UNREST);
+  }
+
+  private countSameStateNeighbors(province: Province, adjacency: Map<number, Set<number>>): number {
+    const neighborIds = adjacency.get(province.i);
+    if (!neighborIds) return 0;
+
+    let count = 0;
+    for (const neighborId of neighborIds) {
+      if (pack.provinces?.[neighborId]?.state === province.state) count++;
+    }
+    return count;
+  }
+
+  // one pass over every cell, recording which provinces actually share a border - same approach
+  // wars-generator.ts and characters-generator.ts use for their own province-adjacency needs
+  private buildProvinceAdjacency(): Map<number, Set<number>> {
+    const adjacency = new Map<number, Set<number>>();
+    for (const cellId of pack.cells?.i ?? []) {
+      const provinceId = pack.cells.province?.[cellId];
+      if (!provinceId) continue;
+
+      for (const neighborCellId of pack.cells.c?.[cellId] ?? []) {
+        const neighborProvinceId = pack.cells.province[neighborCellId];
+        if (!neighborProvinceId || neighborProvinceId === provinceId) continue;
+
+        if (!adjacency.has(provinceId)) adjacency.set(provinceId, new Set());
+        adjacency.get(provinceId)?.add(neighborProvinceId);
+      }
+    }
+    return adjacency;
   }
 
   private secede(province: Province, state: State): void {
