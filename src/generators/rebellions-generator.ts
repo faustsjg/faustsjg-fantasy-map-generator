@@ -23,13 +23,17 @@ import type { Province } from "@/generators/provinces-generator";
 import type { State } from "@/generators/states-generator";
 import { getRandomColor, minmax, P } from "@/utils";
 
-const BASE_UNREST = 0.03;
-const CULTURE_MISMATCH_BONUS = 0.12;
-const MAX_DISTANCE_BONUS = 0.15;
+// weights calibrated toward medieval-Europe realism: a "perfect" province (same culture, close to
+// the capital, mainland, never conquered, average garrison and embeddedness) should almost never
+// spontaneously revolt on its own - real instability came overwhelmingly from a recent conquest,
+// not ambient regional identity. Isolation is a minor tie-breaker factor, not a primary driver.
+const BASE_UNREST = 0.01;
+const CULTURE_MISMATCH_BONUS = 0.1;
+const MAX_DISTANCE_BONUS = 0.1;
 const ISLAND_BONUS = 0.2;
 const MAX_RECENT_ANNEXATION_BONUS = 0.25;
 const RECENT_ANNEXATION_DECAY_YEARS = 150; // ~5 eras at the default 30 years/era - a few generations
-const MAX_ISOLATION_BONUS = 0.15;
+const MAX_ISOLATION_BONUS = 0.04;
 const MIN_UNREST = 0.01;
 const MAX_UNREST = 0.65;
 const MILITARY_DAMPENING_STRENGTH = 0.4;

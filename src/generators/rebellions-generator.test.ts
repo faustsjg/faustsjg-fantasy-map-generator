@@ -3,8 +3,8 @@ import { Rebellions } from "./rebellions-generator";
 
 // The "far province" (province 2) sits at the same spot, culture and landmass as the capital by
 // default in every test - each test tweaks exactly one factor to isolate its effect. Math.random
-// is pinned at 0.10 throughout: below the baseline chance (0.03) it would never trigger, but low
-// enough that adding any single bonus (culture 0.12, distance 0.15, landmass 0.20, fresh
+// is pinned at 0.10 throughout: below the baseline chance (0.01) it would never trigger, but low
+// enough that adding any single bonus (culture 0.10, distance 0.10, landmass 0.20, fresh
 // annexation 0.25) always tips P() over the fixed threshold - a clean way to prove each bonus
 // actually contributes, without needing to read the private formula directly.
 function makePack(
@@ -105,7 +105,7 @@ describe("RebellionsModule.resolve", () => {
   });
 
   it("does not secede at the baseline chance, with no unrest factor present", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.1); // 0.10 >= base 0.03
+    vi.spyOn(Math, "random").mockReturnValue(0.1); // 0.10 >= base 0.01
     globalThis.pack = makePack();
 
     Rebellions.resolve();
@@ -116,7 +116,7 @@ describe("RebellionsModule.resolve", () => {
   });
 
   it("secedes once a culture mismatch pushes the chance past the threshold", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.1); // base(0.03) + culture(0.12) = 0.15 > 0.10
+    vi.spyOn(Math, "random").mockReturnValue(0.1); // base(0.01) + culture(0.10) = 0.11 > 0.10
     globalThis.pack = makePack({ province2Culture: 9 });
 
     Rebellions.resolve();
@@ -129,7 +129,7 @@ describe("RebellionsModule.resolve", () => {
   });
 
   it("secedes once distance from the capital, relative to realm size, pushes past the threshold", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.1); // base(0.03) + max distance(0.15) = 0.18 > 0.10
+    vi.spyOn(Math, "random").mockReturnValue(0.1); // base(0.01) + max distance(0.10) = 0.11 > 0.10
     globalThis.pack = makePack({ province2X: 25 }); // 2.5x the typical radius (10)
 
     Rebellions.resolve();
@@ -139,7 +139,7 @@ describe("RebellionsModule.resolve", () => {
   });
 
   it("secedes once it sits on a different landmass than the capital", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.1); // base(0.03) + island(0.20) = 0.23 > 0.10
+    vi.spyOn(Math, "random").mockReturnValue(0.1); // base(0.01) + island(0.20) = 0.21 > 0.10
     globalThis.pack = makePack({ province2F: 2 }); // capital is on landmass 1
 
     Rebellions.resolve();
@@ -149,7 +149,7 @@ describe("RebellionsModule.resolve", () => {
   });
 
   it("secedes once it was annexed this very era", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.1); // base(0.03) + fresh annexation(0.25) = 0.28 > 0.10
+    vi.spyOn(Math, "random").mockReturnValue(0.1); // base(0.01) + fresh annexation(0.25) = 0.26 > 0.10
     globalThis.pack = makePack({ province2AnnexedYear: 1000 }); // annexed at the current year - 0 years ago
 
     Rebellions.resolve();
@@ -159,7 +159,7 @@ describe("RebellionsModule.resolve", () => {
   });
 
   it("decays the recent-annexation bonus over time - too old to tip the threshold alone", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.2); // base(0.03) + fully-decayed annexation(~0) = 0.03 < 0.20
+    vi.spyOn(Math, "random").mockReturnValue(0.2); // base(0.01) + fully-decayed annexation(~0) = 0.01 < 0.20
     globalThis.pack = makePack({ province2AnnexedYear: 700 }); // 300 years ago, past the 150-year decay window
 
     Rebellions.resolve();
@@ -199,11 +199,11 @@ describe("RebellionsModule.resolve", () => {
   });
 
   it("dampens even a fully-stacked unrest chance for a heavily garrisoned state", () => {
-    // undampened, every bonus stacked would be 0.03+0.12+0.15+0.20+0.25 = 0.75. Rival has no army
-    // at all, so Realm's garrison (troops/area = 1) is the only one counted twice as much as the
-    // era average (0.5) - the highest ratio two states can produce (2), giving dampening
-    // 1-(2-1)*0.4=0.6 and a final chance of 0.75*0.6=0.45
-    vi.spyOn(Math, "random").mockReturnValue(0.5); // between the dampened 0.45 and undampened 0.75
+    // undampened, every bonus stacked would be 0.01+0.10+0.10+0.20+0.25 = 0.66 (clamped to the 0.65
+    // ceiling if dampening were neutral). Rival has no army at all, so Realm's garrison (troops/area
+    // = 1) is the only one counted twice as much as the era average (0.5) - the highest ratio two
+    // states can produce (2), giving dampening 1-(2-1)*0.4=0.6 and a final chance of 0.66*0.6=0.396
+    vi.spyOn(Math, "random").mockReturnValue(0.5); // between the dampened 0.396 and the undampened 0.65 ceiling
     globalThis.pack = makePack({
       province2Culture: 9,
       province2X: 25,
@@ -220,10 +220,10 @@ describe("RebellionsModule.resolve", () => {
   });
 
   it("raises unrest for an undefended state relative to a well-armed rival", () => {
-    // baseline-only chance is 0.03, which alone would never trigger at random()=0.04. Realm has no
+    // baseline-only chance is 0.01, which alone would never trigger at random()=0.012. Realm has no
     // army at all while Rival is well garrisoned, pulling Realm's ratio to 0 and the dampening to
-    // its 1.5x ceiling: 0.03*1.5=0.045 - just enough to tip it
-    vi.spyOn(Math, "random").mockReturnValue(0.04);
+    // 1-(0-1)*0.4=1.4: 0.01*1.4=0.014 - just enough to tip it
+    vi.spyOn(Math, "random").mockReturnValue(0.012);
     globalThis.pack = makePack({
       rival: { area: 100, military: [{ t: 100 }] } // Realm has no military field at all
     });
@@ -237,9 +237,9 @@ describe("RebellionsModule.resolve", () => {
   it("secedes an isolated province but not an equally-far, equally-culture-matched embedded one", () => {
     // P2 borders only foreign (state 2) provinces - 0 same-state neighbors. P3 borders P1 and P4,
     // both state 1 - 2 same-state neighbors. Average across every province on the map (P1..P6) is
-    // 4/6 ≈ 0.667, so P2's ratio is 0 (full +0.15 isolation bonus) and P3's is 3 (clamped to no
+    // 4/6 ≈ 0.667, so P2's ratio is 0 (full +0.04 isolation bonus) and P3's is 3 (clamped to no
     // bonus at all, at or above average). Neither has any other unrest factor present.
-    vi.spyOn(Math, "random").mockReturnValue(0.1); // P2: base(0.03)+isolation(0.15)=0.18 > 0.10; P3: base(0.03) < 0.10
+    vi.spyOn(Math, "random").mockReturnValue(0.03); // P2: base(0.01)+isolation(0.04)=0.05 > 0.03; P3: base(0.01) < 0.03
     globalThis.pack = {
       states: [
         0 as any,
