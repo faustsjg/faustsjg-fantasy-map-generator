@@ -1,8 +1,8 @@
 import Alea from "alea";
 import { max } from "d3";
 import { Emblems } from "@/generators/emblems-generator";
-import type { Emblem } from "@/types/emblems";
 import { getNextPersistentId } from "@/generators/persistent-id";
+import type { Emblem } from "@/types/emblems";
 import { ensureEl, gauss, generateSeed, getMixedColor, getPolesOfInaccessibility, P, rand, rw } from "../utils";
 import type { Label } from "./labels-generator";
 
