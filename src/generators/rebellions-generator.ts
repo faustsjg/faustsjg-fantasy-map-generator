@@ -19,6 +19,7 @@
 // makes those same reasons bite harder.
 import { mean } from "d3";
 import { getMilitaryRatio, getTroopsPerArea } from "@/generators/military-generator";
+import { getNextPersistentId } from "@/generators/persistent-id";
 import type { Province } from "@/generators/provinces-generator";
 import type { State } from "@/generators/states-generator";
 import { getRandomColor, minmax, P } from "@/utils";
@@ -167,6 +168,7 @@ class RebellionsModule {
     const newStateId = pack.states.length;
     const newState: State = {
       i: newStateId,
+      persistentId: getNextPersistentId(),
       name: province.name,
       expansionism: state.expansionism,
       capital: seatBurg.i,
@@ -183,14 +185,21 @@ class RebellionsModule {
     };
     newState.fullName = `${newState.formName} of ${newState.name} (rebelled against ${state.name})`;
     pack.states.push(newState);
+    // states-generator.ts's and provinces-generator.ts's own capital bookkeeping (stale-capital
+    // cleanup, capital-first province-seat sorting) relies on this flag - without it, a later era's
+    // regeneration doesn't know this burg is already someone's capital and can hand it to another state
+    seatBurg.capital = 1;
 
     province.state = newStateId;
     province.annexedYear = undefined; // independent now - no foreign crown to be "recently annexed" by
     for (const cellId of pack.cells.i) {
       if (pack.cells.province?.[cellId] === province.i) pack.cells.state[cellId] = newStateId;
     }
+    // cells.province is the source of truth for which province (and so which state) a burg
+    // belongs to - reassigning only burgs whose .state already matched the old owner would
+    // silently skip (and permanently propagate) any burg that had already drifted out of sync
     for (const burg of pack.burgs) {
-      if (burg.state === state.i && pack.cells.province?.[burg.cell] === province.i) burg.state = newStateId;
+      if (pack.cells.province?.[burg.cell] === province.i) burg.state = newStateId;
     }
   }
 }

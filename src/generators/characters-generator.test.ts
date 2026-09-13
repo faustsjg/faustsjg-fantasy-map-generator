@@ -6,12 +6,24 @@ function makeBurg(overrides: Record<string, unknown> = {}) {
 }
 
 function makeState(overrides: Record<string, unknown> = {}) {
-  return { i: 1, name: "Testland", culture: 1, capital: 1, formName: "Kingdom", removed: false, ...overrides };
+  const i = (overrides.i as number | undefined) ?? 1;
+  return {
+    i,
+    persistentId: i, // defaults to match .i unless a test explicitly overrides it
+    name: "Testland",
+    culture: 1,
+    capital: 1,
+    formName: "Kingdom",
+    removed: false,
+    ...overrides
+  };
 }
 
 function makeProvince(overrides: Record<string, unknown> = {}) {
+  const i = (overrides.i as number | undefined) ?? 1;
   return {
-    i: 1,
+    i,
+    persistentId: i, // defaults to match .i unless a test explicitly overrides it
     state: 1,
     burg: 1,
     name: "Testshire",
@@ -388,6 +400,7 @@ describe("CharactersModule.applySuccession", () => {
   const originalRandom = Math.random;
 
   function makePriorRuler(overrides: Record<string, unknown> = {}) {
+    const state = (overrides.state as number | undefined) ?? 1;
     return {
       i: 0,
       name: "OldRuler",
@@ -396,7 +409,8 @@ describe("CharactersModule.applySuccession", () => {
       role: "King of Testland",
       importance: "notable",
       dynasty: "House of Old",
-      state: 1,
+      state,
+      statePersistentId: state, // defaults to match .state unless a test explicitly overrides it
       spouse: "OldSpouse",
       children: [
         { name: "Heir1", gender: "m" },
@@ -436,6 +450,30 @@ describe("CharactersModule.applySuccession", () => {
     expect(ruler!.name).toBe("OldRuler");
     expect(ruler!.dynasty).toBe("House of Old");
     expect(ruler!.role).toBe("King of Testland");
+  });
+
+  it("recognizes the same locked state across an era even when its .i gets renumbered", () => {
+    // states-generator.ts's recreate() renumbers even LOCKED states each era (a locked state can
+    // go from .i=7 to .i=6 with nothing else different) - a real, confirmed behavior. Succession
+    // must key off persistentId, not .i, or a surviving ruler would wrongly look like a fresh reign
+    Math.random = () => 0.99; // succession never triggers - the SAME ruler must still be recognized
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1 })],
+      states: [
+        0 as any,
+        makeState({ i: 5, persistentId: 42, name: "Testland", capital: 1, lock: true, diplomacy: ["x", "x"] })
+      ],
+      guilds: [],
+      characters: [makePriorRuler({ state: 7, statePersistentId: 42 })], // last era this state was .i=7
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+    const ruler = globalThis.pack.characters!.find((c: any) => c.statePersistentId === 42);
+    expect(ruler!.name).toBe("OldRuler"); // recognized as the same ruler, not a fresh dynasty
+    expect(ruler!.dynasty).toBe("House of Old");
+    expect(ruler!.state).toBe(5); // reassigned to THIS era's .i, not left stuck on last era's 7
   });
 
   it("hands the crown to the recorded heir when succession triggers, keeping the same dynasty", () => {
@@ -529,6 +567,7 @@ describe("CharactersModule.applySuccession", () => {
       importance: "notable",
       dynasty: "House B",
       state: 2,
+      statePersistentId: 2,
       spouse: "RulerA",
       spouseState: 1,
       children: [{ name: "BHeir", gender: "m" }] // has its own heir - never goes extinct
@@ -579,6 +618,7 @@ describe("CharactersModule.applySuccession", () => {
       importance: "notable",
       dynasty: "House A",
       province: 1,
+      provincePersistentId: 1,
       spouse: "NobleB",
       spouseProvince: 2
       // no children - this line goes extinct, but it's married into county 2
@@ -592,6 +632,7 @@ describe("CharactersModule.applySuccession", () => {
       importance: "notable",
       dynasty: "House B",
       province: 2,
+      provincePersistentId: 2,
       spouse: "NobleA",
       spouseProvince: 1,
       children: [{ name: "BHeir", gender: "m" }] // has its own heir - never goes extinct
@@ -639,6 +680,7 @@ describe("CharactersModule.applySuccession", () => {
       importance: "notable",
       dynasty: "House Elf",
       state: 1,
+      statePersistentId: 1,
       age: 100, // well under half of a 700-year elven lifespan
       children: [{ name: "ElfHeir", gender: "m" }]
     };
@@ -651,6 +693,7 @@ describe("CharactersModule.applySuccession", () => {
       importance: "notable",
       dynasty: "House Goblin",
       state: 2,
+      statePersistentId: 2,
       age: 100, // well past a 40-year goblin lifespan
       children: [{ name: "GoblinHeir", gender: "m" }]
     };

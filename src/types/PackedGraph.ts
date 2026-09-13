@@ -80,4 +80,5 @@ export interface PackedGraph {
   aiTerrainEdits?: string[];
   guilds?: Guild[];
   characters?: Character[];
+  nextPersistentId?: number; // monotonic counter behind State.persistentId/Province.persistentId
 }

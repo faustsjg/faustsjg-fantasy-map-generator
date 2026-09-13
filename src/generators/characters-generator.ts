@@ -3,6 +3,7 @@
 // Titles, dynasties and family ties are all derived procedurally from the existing state/province
 // data (form, diplomacy) - nothing here is AI-generated. Only the on-demand bio (characters-overview.ts)
 // calls out to the AI generator, and only when a user clicks for it.
+import { getNextPersistentId } from "@/generators/persistent-id";
 import { getRandomColor, minmax, P, ra, rand, rw } from "@/utils";
 import type { Burg } from "./burgs-generator";
 import type { Province } from "./provinces-generator";
@@ -24,8 +25,13 @@ export interface Character {
   spouse?: string;
   children?: Child[];
   liege?: number; // index into pack.characters of this character's overlord, if any
-  state?: number; // for a ruler: the state.i they rule - lets Eras find them again next era
+  state?: number; // for a ruler: the state.i they rule, for THIS era's own lookups/display
   province?: number; // for a provincial noble: the province.i they govern, same reason
+  // state.i/province.i get renumbered every era, even for locked (surviving) states/provinces -
+  // these track the actual stable identity, so next era's succession can recognize "the same
+  // state/province as last era" regardless of what its .i happens to be renumbered to
+  statePersistentId?: number;
+  provincePersistentId?: number;
   spouseState?: number; // for a ruler married into another crown: that state's i
   spouseProvince?: number; // for a noble married into another county: that province's i
   age?: number; // in years; drives succession together with the culture's lifespan
@@ -251,9 +257,13 @@ class CharactersModule {
   // Everything outside a locked state/province is generated exactly like a fresh map.
   applySuccession(yearsPerEra: number): void {
     const previous = pack.characters ?? [];
-    const priorRulerByState = new Map(previous.filter(c => c.state !== undefined).map(c => [c.state as number, c]));
+    // matched by persistentId, not by state.i/province.i - those get renumbered every era even for
+    // locked (surviving) states/provinces, so last era's .i can't reliably identify this era's entity
+    const priorRulerByState = new Map(
+      previous.filter(c => c.statePersistentId !== undefined).map(c => [c.statePersistentId as number, c])
+    );
     const priorNobleByProvince = new Map(
-      previous.filter(c => c.province !== undefined).map(c => [c.province as number, c])
+      previous.filter(c => c.provincePersistentId !== undefined).map(c => [c.provincePersistentId as number, c])
     );
 
     const characters: Character[] = [];
@@ -268,7 +278,7 @@ class CharactersModule {
       if (!capital || !capital.i || capital.removed) continue;
 
       const index = characters.length;
-      const prior = state.lock ? priorRulerByState.get(state.i) : undefined;
+      const prior = state.lock ? priorRulerByState.get(state.persistentId as number) : undefined;
       const role = `${this.getRulerTitle(state.formName)} of ${state.name}`;
 
       const law = this.getSuccessionLaw(state);
@@ -279,6 +289,11 @@ class CharactersModule {
       if (!ruler) {
         ruler = this.createRuler(index, state, capital);
         this.tryFormMarriageAlliance(ruler, state, rulerByState, characters);
+      } else {
+        // succeed() carries prior's fields forward, which are last era's state.i/persistentId -
+        // both get reasserted to this era's values regardless of which succeed() branch ran
+        ruler.state = state.i;
+        ruler.statePersistentId = state.persistentId;
       }
 
       characters.push(ruler);
@@ -309,7 +324,7 @@ class CharactersModule {
       if (!burg || !burg.i || burg.removed) continue;
 
       const index = characters.length;
-      const prior = priorNobleByProvince.get(province.i);
+      const prior = province.persistentId !== undefined ? priorNobleByProvince.get(province.persistentId) : undefined;
       const role = `${this.getProvinceTitle(province.formName)} of ${province.name}`;
 
       // a county follows its own kingdom's succession custom, not a rule tied to its noble rank
@@ -320,6 +335,11 @@ class CharactersModule {
       if (!noble) {
         noble = this.createProvinceNoble(index, province, burg);
         this.tryFormCountyMarriageAlliance(noble, province, provinceAdjacency, nobleByProvince, characters);
+      } else {
+        // succeed() carries prior's fields forward, which are last era's province.i/persistentId -
+        // both get reasserted to this era's values regardless of which succeed() branch ran
+        noble.province = province.i;
+        noble.provincePersistentId = province.persistentId;
       }
 
       characters.push(noble);
@@ -412,8 +432,21 @@ class CharactersModule {
     if (absorbedRulerIndex !== undefined) {
       characters[absorbedRulerIndex].removed = true;
       rulerByState.delete(state.i);
+
+      // linkStateLieges() already ran, so any vassal of the now-extinct crown is still pointing at
+      // this index - the merger passes their allegiance to the surviving crown instead of leaving
+      // them bound to a dead ruler
+      for (const character of characters) {
+        if (character.liege === absorbedRulerIndex) character.liege = survivorRulerIndex;
+      }
     }
 
+    // burgs are matched against cells.state (the source of truth for territory), and BEFORE
+    // cells.state itself gets reassigned below - matching against burg.state instead would
+    // silently skip (and permanently propagate) any burg that had already drifted out of sync
+    for (const burg of pack.burgs) {
+      if (pack.cells.state[burg.cell] === state.i) burg.state = survivor.i;
+    }
     for (const cellId of pack.cells.i) {
       if (pack.cells.state[cellId] === state.i) pack.cells.state[cellId] = survivor.i;
     }
@@ -422,9 +455,6 @@ class CharactersModule {
         province.state = survivor.i;
         province.annexedYear = options.year; // newly under a foreign crown - a rebellion risk factor
       }
-    }
-    for (const burg of pack.burgs) {
-      if (burg.state === state.i) burg.state = survivor.i;
     }
 
     state.removed = true;
@@ -455,6 +485,7 @@ class CharactersModule {
     const newStateId = pack.states.length;
     const newState: State = {
       i: newStateId,
+      persistentId: getNextPersistentId(),
       name: seatProvince.name,
       expansionism: state.expansionism,
       capital: seatBurg.i,
@@ -473,6 +504,10 @@ class CharactersModule {
     // splinter state, and keeps this module free of a cross-generator dependency
     newState.fullName = `${newState.formName} of ${newState.name}`;
     pack.states.push(newState);
+    // states-generator.ts's own capital bookkeeping (stale-capital cleanup, capital-first
+    // province-seat sorting) relies on this flag - without it, a later era's regeneration doesn't
+    // know this burg is already someone's capital and can hand it to another state
+    seatBurg.capital = 1;
 
     const splinterProvinceIds = new Set(splinterProvinces.map(province => province.i));
     for (const province of splinterProvinces) province.state = newStateId;
@@ -490,6 +525,7 @@ class CharactersModule {
       role: `${this.getRulerTitle(newState.formName)} of ${newState.name}`
     });
     newRuler.state = newStateId;
+    newRuler.statePersistentId = newState.persistentId;
     newRuler.dynasty = characters[primaryRulerIndex].dynasty; // same house, a cadet branch
     rulerByState.set(newStateId, characters.length);
     characters.push(newRuler);
@@ -591,7 +627,8 @@ class CharactersModule {
         culture: state.culture,
         role: `${this.getRulerTitle(state.formName)} of ${state.name}`
       }),
-      state: state.i
+      state: state.i,
+      statePersistentId: state.persistentId
     };
   }
 
@@ -613,7 +650,8 @@ class CharactersModule {
         name: nobleName,
         role: `${this.getProvinceTitle(province.formName)} of ${province.name}`
       }),
-      province: province.i
+      province: province.i,
+      provincePersistentId: province.persistentId
     };
   }
 

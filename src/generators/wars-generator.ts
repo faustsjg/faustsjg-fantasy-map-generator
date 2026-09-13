@@ -65,11 +65,14 @@ class WarsModule {
     const stillHasCapital = pack.burgs[defender.capital]?.state === defender.i;
     const stillHasProvince = (pack.provinces ?? []).some(p => p.i && !p.removed && p.state === defender.i);
     if (!stillHasCapital || !stillHasProvince) {
+      // burgs are matched against cells.state (the source of truth), before cells.state itself
+      // gets reassigned below - matching against burg.state instead would silently skip (and
+      // permanently propagate) any burg that had already drifted out of sync
+      for (const burg of pack.burgs) {
+        if (pack.cells.state[burg.cell] === defender.i) burg.state = attacker.i;
+      }
       for (const cellId of pack.cells.i) {
         if (pack.cells.state[cellId] === defender.i) pack.cells.state[cellId] = attacker.i;
-      }
-      for (const burg of pack.burgs) {
-        if (burg.state === defender.i) burg.state = attacker.i;
       }
       for (const province of pack.provinces ?? []) {
         if (province.i && !province.removed && province.state === defender.i) {
@@ -85,14 +88,16 @@ class WarsModule {
   }
 
   private transferProvince(province: Province, to: State): void {
-    const from = province.state;
     province.state = to.i;
     province.annexedYear = options.year; // freshly conquered - a rebellion risk factor, decaying over time
     for (const cellId of pack.cells.i) {
       if (pack.cells.province?.[cellId] === province.i) pack.cells.state[cellId] = to.i;
     }
+    // cells.province is the source of truth for which province (and so which state) a burg
+    // belongs to - reassigning only burgs whose .state already matched the old owner would
+    // silently skip (and permanently propagate) any burg that had already drifted out of sync
     for (const burg of pack.burgs) {
-      if (burg.state === from && pack.cells.province?.[burg.cell] === province.i) burg.state = to.i;
+      if (pack.cells.province?.[burg.cell] === province.i) burg.state = to.i;
     }
   }
 

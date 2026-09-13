@@ -2,6 +2,7 @@ import Alea from "alea";
 import { max } from "d3";
 import { Emblems } from "@/generators/emblems-generator";
 import type { Emblem } from "@/types/emblems";
+import { getNextPersistentId } from "@/generators/persistent-id";
 import { ensureEl, gauss, generateSeed, getMixedColor, getPolesOfInaccessibility, P, rand, rw } from "../utils";
 import type { Label } from "./labels-generator";
 
@@ -11,6 +12,7 @@ declare global {
 
 export interface Province {
   i: number;
+  persistentId?: number;
   removed?: boolean;
   state: number;
   lock?: boolean;
@@ -142,6 +144,7 @@ class ProvinceModule {
         s.provinces.push(provinceId);
         provinces.push({
           i: provinceId,
+          persistentId: getNextPersistentId(),
           state: s.i,
           center,
           burg: burg.i!,

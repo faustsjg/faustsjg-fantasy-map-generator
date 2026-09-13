@@ -1,5 +1,6 @@
 import { mean, median, quadtree, sum } from "d3";
 import { Emblems } from "@/generators/emblems-generator";
+import { getNextPersistentId } from "@/generators/persistent-id";
 import type { Emblem } from "@/types/emblems";
 import {
   each,
@@ -28,6 +29,7 @@ declare global {
 
 export interface State {
   i: number;
+  persistentId?: number;
   name: string;
   expansionism: number;
   capital: number;
@@ -87,6 +89,7 @@ class StatesModule {
 
     pack.states = states;
     this.expandStates();
+    this.syncBurgStates();
     this.normalize();
     this.getPoles();
     this.findNeighbors();
@@ -127,12 +130,15 @@ class StatesModule {
       Burgs.changeGroup(burg, null);
     }
 
-    for (const state of pack.states) {
-      if (!state.i || state.removed || state.lock) continue;
-      for (const provinceId of state.provinces ?? []) {
-        if (!pack.provinces[provinceId]) continue;
-        pack.provinces[provinceId].removed = true;
-      }
+    // province.state is the live, authoritative record of who owns a province right now - Wars and
+    // Rebellions update it directly whenever territory changes hands mid-era, but never touch a
+    // state's cached .provinces array. Deriving from that stale array (as this used to, and as the
+    // locked-state loop below used to) would silently resurrect ownership Wars/Rebellions had
+    // legitimately moved away this past era - the same "trust the live field, not a side cache"
+    // fix the burg.state sync above needed, applied here to provinces.
+    for (const province of pack.provinces) {
+      if (!province?.i || province.removed) continue;
+      if (!lockedStateIds.includes(province.state)) province.removed = true;
     }
 
     const sortedBurgs = validBurgs
@@ -149,11 +155,16 @@ class StatesModule {
       const newId = newStates.length;
       const { x, y } = pack.burgs[state.capital];
       capitalsTree.add([x, y]);
-      state.provinces?.forEach(provinceId => {
-        if (pack.provinces[provinceId]) pack.provinces[provinceId].state = newId;
-      });
       state.i = newId;
       newStates.push(state);
+    }
+
+    // remapped from each province's own live .state value, exactly like cells.state just below -
+    // not from a state's cached .provinces array, which Wars/Rebellions never keep in sync
+    for (const province of pack.provinces) {
+      if (!province?.i || province.removed) continue;
+      const idx = lockedStateIds.indexOf(province.state);
+      if (idx !== -1) province.state = idx + 1;
     }
 
     for (const cellId of pack.cells.i) {
@@ -190,6 +201,7 @@ class StatesModule {
       coa.shield = capital.coa?.shield;
       newStates.push({
         i: stateId,
+        persistentId: getNextPersistentId(),
         name,
         type,
         capital: capital.i,
@@ -222,6 +234,7 @@ class StatesModule {
       coa.shield = Emblems.getShield(burg.culture!);
       states.push({
         i: burg.i,
+        persistentId: getNextPersistentId(),
         name,
         expansionism,
         capital: burg.i,
@@ -273,12 +286,24 @@ class StatesModule {
   generate() {
     pack.states = this.createStates();
     this.expandStates();
+    this.syncBurgStates();
     this.normalize();
     this.getPoles();
     this.findNeighbors();
     this.assignColors();
     this.generateCampaigns();
     this.generateDiplomacy();
+  }
+
+  // expandStates() (initial generation or a fresh era) is the moment territory becomes final and
+  // authoritative in cells.state - but nothing had ever kept burg.state in sync with it, at
+  // generation OR regeneration. A stale burg.state fools recreate()'s own "is this already a
+  // locked capital" exclusion, letting an unrelated new state steal a burg that's secretly still
+  // someone else's capital (or, at first generation, was simply never assigned at all).
+  private syncBurgStates() {
+    for (const burg of pack.burgs) {
+      if (burg.i) burg.state = pack.cells.state[burg.cell];
+    }
   }
 
   expandStates() {
