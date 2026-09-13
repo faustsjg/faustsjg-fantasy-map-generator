@@ -534,6 +534,7 @@ describe("CharactersModule.applySuccession", () => {
       children: [{ name: "BHeir", gender: "m" }] // has its own heir - never goes extinct
     };
 
+    globalThis.options = { year: 1000 } as any;
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1, state: 1 }), makeBurg({ i: 2, state: 2 })],
       states: [
@@ -542,7 +543,7 @@ describe("CharactersModule.applySuccession", () => {
         makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, lock: true, diplomacy: ["x", "x", "x"] })
       ],
       guilds: [],
-      provinces: [],
+      provinces: [0 as any, makeProvince({ i: 1, state: 1 })],
       characters: [priorA, priorB],
       cells: { i: [0, 1, 2, 3], state: [0, 1, 1, 2] },
       cultures: [null, { i: 1, name: "Testculture" }]
@@ -555,6 +556,8 @@ describe("CharactersModule.applySuccession", () => {
     expect(globalThis.pack.states[2].fullName).toContain("united with Kingland");
     expect(Array.from(globalThis.pack.cells.state)).toEqual([0, 2, 2, 2]);
     expect(globalThis.pack.burgs[1].state).toBe(2);
+    expect(globalThis.pack.provinces[1].state).toBe(2);
+    expect(globalThis.pack.provinces[1].annexedYear).toBe(1000); // newly under a foreign crown - a rebellion risk factor
 
     const survivorRuler = globalThis.pack.characters!.find((c: any) => c.state === 2 && !c.removed);
     expect(survivorRuler!.name).toBe("BHeir");

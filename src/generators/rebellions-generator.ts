@@ -1,0 +1,138 @@
+// A province doesn't stay loyal just because a border was redrawn - Wars.transferProvince() and
+// characters-generator.ts's resolveMarriageMerge() move territory, but nothing until now gave
+// that territory a reason to want out again. Every era, every province gets a chance to rebel and
+// break away as its own independent state, driven entirely by structural unrest signals that are
+// already sitting in the data - nothing new to compute except how recently it changed hands:
+//  - a different culture from the crown's
+//  - real distance from the capital, scaled to the realm's own size (a "far" province in a small
+//    kingdom and a "far" province in an empire aren't the same kind of far)
+//  - sitting on a different landmass than the capital (an island or overseas holding is far harder
+//    to hold than raw distance alone suggests - the classic colonial-independence pattern)
+//  - how recently it was annexed by force (war conquest or a marriage merger) - freshly conquered
+//    land is unstable, but that wound heals over a few generations
+// A well-garrisoned state dampens all of the above at once, Civilization-style: a strong army
+// keeps a realm together even where it has every structural reason to fray, while a thin one
+// makes those same reasons bite harder.
+import { mean } from "d3";
+import { getMilitaryRatio, getTroopsPerArea } from "@/generators/military-generator";
+import type { Province } from "@/generators/provinces-generator";
+import type { State } from "@/generators/states-generator";
+import { getRandomColor, minmax, P } from "@/utils";
+
+const BASE_UNREST = 0.03;
+const CULTURE_MISMATCH_BONUS = 0.12;
+const MAX_DISTANCE_BONUS = 0.15;
+const ISLAND_BONUS = 0.2;
+const MAX_RECENT_ANNEXATION_BONUS = 0.25;
+const RECENT_ANNEXATION_DECAY_YEARS = 150; // ~5 eras at the default 30 years/era - a few generations
+const MIN_UNREST = 0.01;
+const MAX_UNREST = 0.65;
+const MILITARY_DAMPENING_STRENGTH = 0.4;
+const MIN_MILITARY_DAMPENING = 0.25; // a heavily garrisoned empire's unrest drops to at most a quarter of the raw value
+const MAX_MILITARY_DAMPENING = 1.5; // an undefended realm's unrest can run up to 1.5x the raw value
+
+class RebellionsModule {
+  // called once per era, after Wars.resolveCampaigns() has settled this era's conquests and
+  // before Characters.applySuccession() hands out rulers - any new rebel state is prior-less, so
+  // applySuccession() creates its ruler exactly like it would for any other brand new state
+  resolve(): void {
+    let anyChange = false;
+
+    const validStates = pack.states.filter(s => s.i && !s.removed);
+    const averageTroopsPerArea = mean(validStates.map(getTroopsPerArea)) || 0;
+
+    for (const state of validStates) {
+      const provinces = (pack.provinces ?? []).filter(p => p.i && !p.removed && p.state === state.i);
+      if (provinces.length < 2) continue; // nothing left to secede from
+
+      const capitalBurg = pack.burgs[state.capital];
+      if (!capitalBurg?.i) continue;
+      const capitalProvinceId = pack.cells.province?.[capitalBurg.cell];
+
+      const militaryRatio = getMilitaryRatio(getTroopsPerArea(state), averageTroopsPerArea);
+      const militaryDampening = minmax(
+        1 - (militaryRatio - 1) * MILITARY_DAMPENING_STRENGTH,
+        MIN_MILITARY_DAMPENING,
+        MAX_MILITARY_DAMPENING
+      );
+
+      for (const province of provinces) {
+        if (province.i === capitalProvinceId) continue; // the capital itself never rebels against its own crown
+
+        if (P(this.getUnrestChance(province, state, capitalBurg, militaryDampening))) {
+          this.secede(province, state);
+          anyChange = true;
+        }
+      }
+    }
+
+    if (anyChange) window.States.collectStatistics(); // refresh area/burgs/rural/urban after territory moved
+  }
+
+  private getUnrestChance(
+    province: Province,
+    state: State,
+    capitalBurg: { x: number; y: number; cell: number },
+    militaryDampening: number
+  ): number {
+    const provinceBurg = pack.burgs[province.burg];
+    if (!provinceBurg?.i) return 0;
+
+    const cultureMismatch = provinceBurg.culture !== undefined && provinceBurg.culture !== state.culture;
+
+    const distance = Math.hypot(provinceBurg.x - capitalBurg.x, provinceBurg.y - capitalBurg.y);
+    const typicalRadius = Math.sqrt(state.area || 1) || 1;
+    const distanceBonus = minmax(distance / typicalRadius - 1, 0, 1) * MAX_DISTANCE_BONUS;
+
+    const onDifferentLandmass = pack.cells.f?.[provinceBurg.cell] !== pack.cells.f?.[capitalBurg.cell];
+
+    const yearsSinceAnnexation = province.annexedYear === undefined ? Infinity : options.year - province.annexedYear;
+    const recentAnnexationBonus =
+      minmax(1 - yearsSinceAnnexation / RECENT_ANNEXATION_DECAY_YEARS, 0, 1) * MAX_RECENT_ANNEXATION_BONUS;
+
+    const rawChance =
+      BASE_UNREST +
+      (cultureMismatch ? CULTURE_MISMATCH_BONUS : 0) +
+      distanceBonus +
+      (onDifferentLandmass ? ISLAND_BONUS : 0) +
+      recentAnnexationBonus;
+
+    return minmax(rawChance * militaryDampening, MIN_UNREST, MAX_UNREST);
+  }
+
+  private secede(province: Province, state: State): void {
+    const seatBurg = pack.burgs[province.burg];
+    if (!seatBurg?.i || seatBurg.removed) return;
+
+    const newStateId = pack.states.length;
+    const newState: State = {
+      i: newStateId,
+      name: province.name,
+      expansionism: state.expansionism,
+      capital: seatBurg.i,
+      type: state.type,
+      center: seatBurg.cell,
+      culture: seatBurg.culture ?? state.culture,
+      coa: state.coa,
+      form: state.form,
+      formName: state.formName,
+      color: getRandomColor(),
+      salesTax: state.salesTax,
+      pollTax: state.pollTax,
+      treasury: 0
+    };
+    newState.fullName = `${newState.formName} of ${newState.name} (rebelled against ${state.name})`;
+    pack.states.push(newState);
+
+    province.state = newStateId;
+    province.annexedYear = undefined; // independent now - no foreign crown to be "recently annexed" by
+    for (const cellId of pack.cells.i) {
+      if (pack.cells.province?.[cellId] === province.i) pack.cells.state[cellId] = newStateId;
+    }
+    for (const burg of pack.burgs) {
+      if (burg.state === state.i && pack.cells.province?.[burg.cell] === province.i) burg.state = newStateId;
+    }
+  }
+}
+
+export const Rebellions = new RebellionsModule();

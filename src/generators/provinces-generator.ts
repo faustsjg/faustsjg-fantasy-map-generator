@@ -14,6 +14,7 @@ export interface Province {
   removed?: boolean;
   state: number;
   lock?: boolean;
+  annexedYear?: number; // year it last changed hands by force (war conquest, marriage merger) - undefined if it's always belonged to its current state
   center: number;
   burg: number;
   name: string;

@@ -27,6 +27,20 @@ describe("survivalChance", () => {
     expect(survivalChance(0, 0, 4)).toBe(0);
     expect(survivalChance(10, 100, 0)).toBe(0);
   });
+
+  it("lets a strong military push survival past the pure area-based ceiling", () => {
+    // area alone caps at 0.9 (share 0.9, count 2); 3x the average garrison adds the full +0.3 bonus
+    expect(survivalChance(90, 100, 2, 3)).toBe(0.95);
+  });
+
+  it("lets a weak military pull survival below what area alone would give", () => {
+    // share 0.25, count 4 -> 0.6 unclamped; no army at all (ratio 0) subtracts the full 0.15
+    expect(survivalChance(25, 100, 4, 0)).toBeCloseTo(0.45, 5);
+  });
+
+  it("has no effect when militaryRatio is omitted or exactly average (1)", () => {
+    expect(survivalChance(25, 100, 4)).toBe(survivalChance(25, 100, 4, 1));
+  });
 });
 
 describe("ErasModule.generate", () => {
@@ -132,5 +146,17 @@ describe("ErasModule.generate", () => {
     expect(globalThis.pack.states[2].lock).toBe(false);
     expect(globalThis.pack.states[1].name).toBe("Big");
     expect(globalThis.pack.states[2].name).toBe("Small");
+  });
+
+  it("lets a well-garrisoned state survive while an equally-sized, undefended one doesn't", () => {
+    // both states have the same area/share (0.6 area-based chance each) - only military differs
+    globalThis.pack.states[1] = { i: 1, name: "Big", area: 50, culture: 0, military: [{ t: 100 }] } as any;
+    globalThis.pack.states[2] = { i: 2, name: "Small", area: 50, culture: 0 } as any; // no army at all
+    vi.spyOn(Math, "random").mockReturnValue(0.5); // between Small's 0.45 and Big's 0.75
+
+    ErasModule.generate(2, 100);
+
+    expect(globalThis.pack.states[1].lock).toBe(true);
+    expect(globalThis.pack.states[2].lock).toBe(false);
   });
 });

@@ -72,7 +72,10 @@ class WarsModule {
         if (burg.state === defender.i) burg.state = attacker.i;
       }
       for (const province of pack.provinces ?? []) {
-        if (province.i && !province.removed && province.state === defender.i) province.state = attacker.i;
+        if (province.i && !province.removed && province.state === defender.i) {
+          province.state = attacker.i;
+          province.annexedYear = options.year;
+        }
       }
       defender.removed = true;
       attacker.fullName = `${attacker.fullName ?? attacker.name} (absorbed ${defender.name})`;
@@ -84,6 +87,7 @@ class WarsModule {
   private transferProvince(province: Province, to: State): void {
     const from = province.state;
     province.state = to.i;
+    province.annexedYear = options.year; // freshly conquered - a rebellion risk factor, decaying over time
     for (const cellId of pack.cells.i) {
       if (pack.cells.province?.[cellId] === province.i) pack.cells.state[cellId] = to.i;
     }

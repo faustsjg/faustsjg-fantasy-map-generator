@@ -34,6 +34,7 @@ describe("WarsModule.resolveCampaigns", () => {
   let collectStatistics: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    globalThis.options = { year: 1000 } as any;
     collectStatistics = vi.fn();
     globalThis.window = globalThis.window || ({} as any);
     globalThis.window.States = { collectStatistics } as any;
@@ -73,7 +74,9 @@ describe("WarsModule.resolveCampaigns", () => {
 
     // 2 bordering provinces, ceil(2/3) = 1 taken - the first one in iteration order
     expect(globalThis.pack.provinces[2].state).toBe(1);
+    expect(globalThis.pack.provinces[2].annexedYear).toBe(1000); // freshly conquered - a rebellion risk factor
     expect(globalThis.pack.provinces[3].state).toBe(2);
+    expect(globalThis.pack.provinces[3].annexedYear).toBeUndefined();
     expect(globalThis.pack.provinces[4].state).toBe(2);
     expect(Array.from(globalThis.pack.cells.state)).toEqual([0, 1, 1, 2, 2]);
     expect(defender.removed).toBeFalsy();

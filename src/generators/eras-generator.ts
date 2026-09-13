@@ -1,6 +1,8 @@
-import { sum } from "d3";
+import { mean, sum } from "d3";
 import type { Character } from "@/generators/characters-generator";
 import { Characters } from "@/generators/characters-generator";
+import { getMilitaryRatio, getTroopsPerArea } from "@/generators/military-generator";
+import { Rebellions } from "@/generators/rebellions-generator";
 import type { State } from "@/generators/states-generator";
 import { mutateName } from "@/generators/toponym-drift";
 import { Wars } from "@/generators/wars-generator";
@@ -17,13 +19,18 @@ export interface Era {
   characters: Character[];
 }
 
-// Chance that a state survives into the next era, based on its share of the
-// total settled area of that era: bigger states are more likely to keep their
-// throne, small ones more likely to be swallowed or collapse.
-export function survivalChance(stateArea: number, totalArea: number, stateCount: number): number {
+// Chance that a state survives into the next era, based on its share of the total settled area
+// of that era (bigger states are more likely to keep their throne, small ones more likely to be
+// swallowed or collapse) plus a military bonus/penalty: a well-garrisoned state resists
+// dissolution beyond what its territory alone would suggest, Civilization-style - Rome doesn't
+// fall just because a province revolts, a strong army keeps it together. militaryRatio defaults
+// to 1 (neutral, no effect) when the caller has no military data to compare against.
+export function survivalChance(stateArea: number, totalArea: number, stateCount: number, militaryRatio = 1): number {
   if (totalArea <= 0 || stateCount <= 0) return 0;
   const share = stateArea / totalArea;
-  return minmax(share * stateCount * 0.6, 0.05, 0.9);
+  const areaBasedChance = minmax(share * stateCount * 0.6, 0.05, 0.9);
+  const militaryBonus = minmax((militaryRatio - 1) * 0.15, -0.15, 0.3);
+  return minmax(areaBasedChance + militaryBonus, 0.05, 0.95);
 }
 
 class ErasModule {
@@ -40,6 +47,7 @@ class ErasModule {
       this.applySuccession();
       window.States.regenerate();
       Wars.resolveCampaigns();
+      Rebellions.resolve();
       Characters.applySuccession(yearsPerEra);
       eras.push(this.snapshot(options.year));
     }
@@ -66,8 +74,10 @@ class ErasModule {
     if (!validStates.length) return;
 
     const totalArea = sum(validStates.map(s => s.area ?? 0)) || 1;
+    const averageTroopsPerArea = mean(validStates.map(getTroopsPerArea)) || 0;
     for (const state of validStates) {
-      state.lock = P(survivalChance(state.area ?? 0, totalArea, validStates.length));
+      const militaryRatio = getMilitaryRatio(getTroopsPerArea(state), averageTroopsPerArea);
+      state.lock = P(survivalChance(state.area ?? 0, totalArea, validStates.length, militaryRatio));
 
       // States.defineStateForms() skips locked states, so a surviving name
       // only drifts here; fullName is recomputed from the mutated name and

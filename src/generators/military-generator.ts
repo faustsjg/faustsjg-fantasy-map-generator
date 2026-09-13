@@ -30,6 +30,22 @@ export interface Regiment {
   py?: number;
 }
 
+// how densely a state is garrisoned relative to its own size - the basis for letting a strong
+// military resist both era-to-era dissolution (eras-generator.ts's survivalChance) and internal
+// unrest (rebellions-generator.ts), Civilization-style: army strength keeps a realm alive, not
+// just the size of its territory
+export function getTroopsPerArea(state: State): number {
+  const troops = (state.military ?? []).reduce((total, regiment) => total + (regiment.t || 0), 0);
+  return troops / (state.area || 1);
+}
+
+// > 1 means better-garrisoned than the era's average state, < 1 means thinner - falls back to a
+// neutral 1 (no effect either way) when there's no meaningful military data yet to compare against
+export function getMilitaryRatio(troopsPerArea: number, averageTroopsPerArea: number): number {
+  if (averageTroopsPerArea <= 0) return 1;
+  return troopsPerArea / averageTroopsPerArea;
+}
+
 interface Platoon {
   cell: number;
   a: number; // platoon army

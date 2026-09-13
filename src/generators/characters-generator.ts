@@ -418,7 +418,10 @@ class CharactersModule {
       if (pack.cells.state[cellId] === state.i) pack.cells.state[cellId] = survivor.i;
     }
     for (const province of pack.provinces ?? []) {
-      if (province.state === state.i) province.state = survivor.i;
+      if (province.state === state.i) {
+        province.state = survivor.i;
+        province.annexedYear = options.year; // newly under a foreign crown - a rebellion risk factor
+      }
     }
     for (const burg of pack.burgs) {
       if (burg.state === state.i) burg.state = survivor.i;
