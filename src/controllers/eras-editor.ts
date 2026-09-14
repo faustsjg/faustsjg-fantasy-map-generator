@@ -78,6 +78,11 @@ function renderDialog(): void {
     }
 
     #erasPlayback {
+      /* .dialog > div defaults to width: max-content (fine for #erasControls' short label+input
+         rows) - overridden here because it let the event log's long, unwrapped lines size this
+         element (and so the whole fixed-width dialog) to their max-content width instead of
+         wrapping, producing a horizontal scrollbar */
+      width: 100%;
       margin-top: 0.6em;
     }
 
@@ -89,6 +94,11 @@ function renderDialog(): void {
 
     #erasSlider {
       flex: 1;
+      /* flex items default to min-width: auto (their own intrinsic size), which for a range
+         input is wide enough that this row (button + slider + speed select) doesn't fit the
+         dialog's fixed width - min-width: 0 lets it actually shrink instead of pushing
+         #erasSpeed past the row's own edge */
+      min-width: 0;
     }
 
     #erasYearLabel {
@@ -98,13 +108,27 @@ function renderDialog(): void {
 
     #erasEventLog {
       max-height: 10em;
+      overflow-x: hidden;
       overflow-y: auto;
       margin-top: 0.4em;
+      box-sizing: border-box;
+    }
+
+    /* matches the thin scrollbar .dialog/.table already use elsewhere - the browser-default one
+       otherwise reserves ~15px, wide enough to push this element past the dialog's own fixed width */
+    #erasEventLog::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    #erasEventLog::-webkit-scrollbar-thumb {
+      background-color: #aaa;
+      border-radius: 6px;
     }
 
     .erasEventLine {
       font-size: 0.9em;
       padding: 0.1em 0;
+      overflow-wrap: break-word;
     }
   `;
   document.head.append(style);
@@ -359,7 +383,7 @@ function findAbsorber(
   if (bestOwner === undefined) return null;
 
   const absorber = currentStates.find(s => s.i === bestOwner && !s.removed);
-  return absorber ? absorber.fullName ?? absorber.name : null;
+  return absorber ? (absorber.fullName ?? absorber.name) : null;
 }
 
 function closeErasEditor(): void {
