@@ -2,7 +2,6 @@
 // from pack.eras' character snapshots, matched by statePersistentId - the one identifier that
 // survives every era's state.i renumbering (see persistent-id.ts). No new data is generated here.
 import { closeDialogs, destroyDialog, updateDialog } from "@/components/dialog/dialog-helpers";
-import { Controllers } from "@/controllers";
 import type { Character } from "@/generators/characters-generator";
 import type { State } from "@/generators/states-generator";
 import { EmblemRenderer } from "@/renderers/emblems/renderer";
@@ -88,7 +87,6 @@ function renderDialog(state: State): void {
       #dynastyOverviewStateName { font-weight: bold; }
       #dynastyOverviewHistoryTitle { font-weight: bold; margin-top: 0.7em; margin-bottom: 0.3em; }
       .dynastyRulerCard > div { margin-bottom: 0.2em; }
-      .dynastyRulerBio { cursor: pointer; }
       #${dialogId} { overflow-x: hidden; }
       .dynastyReign { padding: 0.15em 0; border-bottom: 1px solid rgba(128, 128, 128, 0.2); overflow-wrap: break-word; }
       .dynastyReign:last-child { border-bottom: none; font-weight: bold; }
@@ -121,7 +119,6 @@ function renderRuler(state: State): void {
   const childrenLine = ruler.children?.length
     ? `<div>Children: ${ruler.children.map(c => c.name).join(", ")}</div>`
     : "";
-  const bioTip = ruler.bio ? ruler.bio.replace(/"/g, "&quot;") : "Click to generate a short biography";
 
   container.innerHTML = /* html */ `<div class="dynastyRulerCard">
     <div><b>${ruler.name}</b> — ${ruler.role}</div>
@@ -129,14 +126,7 @@ function renderRuler(state: State): void {
     ${spouseLine}
     ${childrenLine}
     ${liegeLine}
-    <div class="dynastyRulerBio" data-tip="${bioTip}">
-      <span class="${ruler.bio ? "icon-info-circled" : "icon-plus-circled"}"></span> Biography
-    </div>
   </div>`;
-
-  ensureEl("dynastyOverviewRuler")
-    .querySelector(".dynastyRulerBio")
-    ?.addEventListener("click", () => generateRulerBio(ruler));
 }
 
 function renderHistory(state: State): void {
@@ -157,30 +147,6 @@ function renderHistory(state: State): void {
       </div>`;
     })
     .join("");
-}
-
-function generateRulerBio(ruler: Character): void {
-  void Controllers.AiGenerator.open({
-    defaultPrompt: buildRulerBioPrompt(ruler),
-    onApply: result => {
-      ruler.bio = result.trim();
-      const card = document.querySelector<HTMLElement>(`#${dialogId} .dynastyRulerBio`);
-      if (card) card.dataset.tip = ruler.bio.replace(/"/g, "&quot;");
-    }
-  });
-}
-
-function buildRulerBioPrompt(ruler: Character): string {
-  const dynasty = ruler.dynasty ? ` of ${ruler.dynasty}` : "";
-  const liege = ruler.liege !== undefined ? pack.characters?.[ruler.liege] : undefined;
-  const fealty = liege ? ` They answer to ${liege.name}, ${liege.role}.` : "";
-  const family =
-    ruler.spouse || ruler.children?.length
-      ? ` They are married to ${ruler.spouse ?? "someone from another house"}${
-          ruler.children?.length ? ` and have ${ruler.children.length} children` : ""
-        }.`
-      : "";
-  return `Write a short biography (3-5 sentences) for ${ruler.name}${dynasty}, ${ruler.role}.${fealty}${family} Keep it grounded and mundane: an ordinary, believable life - no quests, no prophecies, no epic destiny. Plain text, no markdown, no headings.`;
 }
 
 export const DynastyOverview = { open };
