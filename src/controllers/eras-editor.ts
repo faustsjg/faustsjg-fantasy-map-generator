@@ -4,12 +4,15 @@ import { tip } from "@/components/tooltips";
 import { unfog } from "@/renderers/overlays/fogging";
 import { ensureEl } from "../utils";
 
+let playbackTimer: number | undefined;
+
 function open(): void {
   closeDialogs("#erasEditor, .stable");
   renderDialog();
 
   ensureEl("erasGenerate").addEventListener("click", generate);
   ensureEl<HTMLInputElement>("erasSlider").addEventListener("input", onSliderInput);
+  ensureEl("erasPlayPause").addEventListener("click", togglePlayback);
 
   if (pack.eras?.length) showPlayback(pack.eras.length - 1);
 
@@ -37,7 +40,15 @@ function renderDialog(): void {
       <button id="erasGenerate">Generate</button>
     </div>
     <div id="erasPlayback" hidden>
-      <input id="erasSlider" type="range" min="0" max="0" value="0" step="1" />
+      <div id="erasPlaybackControls">
+        <button id="erasPlayPause" data-tip="Play/pause the timeline" class="icon-play"></button>
+        <input id="erasSlider" type="range" min="0" max="0" value="0" step="1" />
+        <select id="erasSpeed" data-tip="Playback speed">
+          <option value="1600">Slow</option>
+          <option value="800" selected>Normal</option>
+          <option value="400">Fast</option>
+        </select>
+      </div>
       <div id="erasYearLabel"></div>
     </div>
   </div>`;
@@ -66,8 +77,14 @@ function renderDialog(): void {
       margin-top: 0.6em;
     }
 
+    #erasPlaybackControls {
+      display: flex;
+      align-items: center;
+      gap: 0.4em;
+    }
+
     #erasSlider {
-      width: 100%;
+      flex: 1;
     }
 
     #erasYearLabel {
@@ -87,6 +104,7 @@ function generate(): void {
   if (!count || count < 1) return void tip("<i>Eras</i> must be at least 1", false, "error");
   if (!years || years < 1) return void tip("<i>Years per era</i> must be at least 1", false, "error");
 
+  stopPlayback();
   window.Eras.generate(count, years);
   showPlayback(pack.eras!.length - 1);
 }
@@ -106,8 +124,52 @@ function showPlayback(index: number): void {
 }
 
 function onSliderInput(event: Event): void {
+  stopPlayback();
   const index = Number((event.target as HTMLInputElement).value);
   selectEra(index);
+}
+
+function togglePlayback(): void {
+  if (playbackTimer === undefined) startPlayback();
+  else stopPlayback();
+}
+
+function startPlayback(): void {
+  const eras = pack.eras;
+  if (!eras?.length) return;
+
+  const slider = ensureEl<HTMLInputElement>("erasSlider");
+  if (Number(slider.value) >= eras.length - 1) {
+    slider.value = "0";
+    selectEra(0);
+  }
+
+  setPlayPauseIcon(true);
+  const speed = ensureEl<HTMLInputElement>("erasSpeed").valueAsNumber || 800;
+  playbackTimer = window.setInterval(() => {
+    const index = Number(slider.value) + 1;
+    if (index > eras.length - 1) {
+      stopPlayback();
+      return;
+    }
+    slider.value = String(index);
+    selectEra(index);
+  }, speed);
+}
+
+function stopPlayback(): void {
+  if (playbackTimer === undefined) return;
+  clearInterval(playbackTimer);
+  playbackTimer = undefined;
+  setPlayPauseIcon(false);
+}
+
+// no icon-pause glyph exists in this project's icon font, so the pause state falls back to a
+// plain text glyph instead of an icon class
+function setPlayPauseIcon(isPlaying: boolean): void {
+  const button = ensureEl("erasPlayPause");
+  button.className = isPlaying ? "" : "icon-play";
+  button.textContent = isPlaying ? "⏸" : "";
 }
 
 // Apply one era's political snapshot to the live map and redraw. Geography
@@ -132,6 +194,7 @@ function selectEra(index: number): void {
 }
 
 function closeErasEditor(): void {
+  stopPlayback();
   $("#erasEditor").dialog("destroy");
   ensureEl("erasEditor").remove();
   document.getElementById("erasEditorStyles")?.remove();
