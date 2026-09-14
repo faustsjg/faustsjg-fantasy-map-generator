@@ -5,7 +5,7 @@ import { closeDialogs, destroyDialog, updateDialog } from "@/components/dialog/d
 import type { Character } from "@/generators/characters-generator";
 import type { State } from "@/generators/states-generator";
 import { EmblemRenderer } from "@/renderers/emblems/renderer";
-import { ensureEl } from "../utils";
+import { ensureEl, si } from "../utils";
 
 const dialogId = "dynastyOverview" as const;
 const position = { my: "center top", at: "center top+10", of: "svg", collision: "fit" };
@@ -70,6 +70,7 @@ function renderDialog(state: State): void {
       <div>
         <div id="dynastyOverviewStateName">${state.fullName ?? state.name}</div>
         <div id="dynastyOverviewCapital" class="pointer" data-tip="Click to zoom to the capital">${pack.burgs[state.capital]?.name ?? ""}</div>
+        <div id="dynastyOverviewTreasury" data-tip="State treasury">🟡 ${si(state.treasury)}</div>
       </div>
     </div>
     <div id="dynastyOverviewRuler"></div>

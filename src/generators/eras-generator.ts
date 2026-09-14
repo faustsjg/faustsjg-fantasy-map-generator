@@ -6,7 +6,7 @@ import { Rebellions } from "@/generators/rebellions-generator";
 import type { State } from "@/generators/states-generator";
 import { mutateName } from "@/generators/toponym-drift";
 import { Wars } from "@/generators/wars-generator";
-import { minmax, P } from "../utils";
+import { minmax, P, rn } from "../utils";
 
 declare global {
   var Eras: ErasModule;
@@ -49,6 +49,7 @@ class ErasModule {
       Wars.resolveCampaigns();
       Rebellions.resolve();
       Characters.applySuccession(yearsPerEra);
+      this.updateTreasuries();
       eras.push(this.snapshot(options.year));
     }
 
@@ -100,6 +101,18 @@ class ErasModule {
       }
 
       if (P(0.2)) burg.name = mutateName(burg.name ?? "");
+    }
+  }
+
+  // States.collectTaxes() also folds in sales-tax revenue from pack.deals, which isn't era-aware
+  // (deals stay tied to the live map's current burgs/markets, not any particular era's political
+  // layout) - so this mirrors only its poll-tax half: pollTax × (rural + urban), reset and
+  // recomputed fresh each era exactly like the live version does, not accumulated across eras.
+  private updateTreasuries(): void {
+    for (const state of pack.states) {
+      if (!state.i || state.removed) continue;
+      const population = (state.rural ?? 0) + (state.urban ?? 0);
+      state.treasury = rn(state.pollTax * population, 2);
     }
   }
 }

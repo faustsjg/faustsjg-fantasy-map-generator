@@ -37,7 +37,7 @@ Called from `public/main.js` after `Production.produce()` and `Markets.runGlobal
 2. For each `deal` with a `tax` field, look up the seller state (burg's state for burg sellers; the market's center burg's state for market sellers) and credit `state.treasury += deal.tax`.
 3. For each non-neutral state, add `pollTax × (rural + urban)` to its treasury.
 
-This is the only writer of `state.treasury` outside the editor (which can also write via the Treasury dialog manual override).
+Outside the editor (which can also write via the Treasury dialog manual override), this is the only writer of `state.treasury` on the live map. Each generated Era snapshot gets its own treasury too, via `Eras.updateTreasuries()` — but only the poll-tax half of the formula above: `state.treasury = pollTax × (rural + urban)`, reset and recomputed fresh per era rather than accumulated. Sales tax is deliberately left out there, since `pack.deals`/markets are never regenerated per era and stay tied to the live map's present-day burgs and trade routes — reusing them for a past or future era's snapshot would misattribute today's trade to a different political layout. The very first era snapshot (taken before the generation loop runs) keeps whatever `treasury` the live map already had, sales tax included, since it's just a snapshot of the map's current state.
 
 ## Editor surface
 
@@ -57,6 +57,7 @@ When loading an older save (`auto-update.js`), the migration runs `States.define
 ## Sources
 
 - [`src/generators/states-generator.ts`](../../src/generators/states-generator.ts) — rate generation, `collectTaxes`
+- [`src/generators/eras-generator.ts`](../../src/generators/eras-generator.ts) — `updateTreasuries`, the per-era poll-tax-only recompute
 - [`src/generators/markets-generator.ts`](../../src/generators/markets-generator.ts) — `sell`, `runGlobalTrade` tax wiring
 - [`src/generators/production-generator.ts`](../../src/generators/production-generator.ts) — burg-sell deduction
 - [`public/modules/dynamic/editors/states-editor.js`](../../public/modules/dynamic/editors/states-editor.js) — Treasury column + dialog
