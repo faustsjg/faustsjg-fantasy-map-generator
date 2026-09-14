@@ -2,8 +2,8 @@ import { select } from "d3";
 import { closeDialogs } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
 import { tip } from "@/components/tooltips";
-import { unfog } from "@/renderers/overlays/fogging";
 import type { State } from "@/generators/states-generator";
+import { unfog } from "@/renderers/overlays/fogging";
 import type { TypedArray } from "@/types/PackedGraph";
 import { ensureEl } from "../utils";
 
@@ -53,6 +53,7 @@ function renderDialog(): void {
         </select>
       </div>
       <div id="erasYearLabel"></div>
+      <div id="erasEventLog"></div>
     </div>
   </div>`;
   ensureEl("dialogs").insertAdjacentHTML("beforeend", html);
@@ -93,6 +94,17 @@ function renderDialog(): void {
     #erasYearLabel {
       text-align: center;
       margin-top: 0.3em;
+    }
+
+    #erasEventLog {
+      max-height: 10em;
+      overflow-y: auto;
+      margin-top: 0.4em;
+    }
+
+    .erasEventLine {
+      font-size: 0.9em;
+      padding: 0.1em 0;
     }
   `;
   document.head.append(style);
@@ -202,14 +214,34 @@ function selectEra(index: number, highlight = false): void {
 
   if (previousCellsState && previousStates) {
     highlightChangedTerritory(previousCellsState, previousStates, pack.cells.state, pack.states);
+    renderEventLog(previousCellsState, previousStates, pack.cells.state, pack.states);
+  } else {
+    ensureEl("erasEventLog").innerHTML = "";
   }
 }
 
-// Flashes only the footprint of states that were born or died between the two snapshots - a state
-// ceding border provinces to a neighbor, or merely being renumbered/renamed while it survives
-// (recreate() renumbers even locked states every era; mutateName() can reword a surviving state's
-// name), is not a "change" worth calling out, only a birth or a death is. Matched by persistentId,
-// the identifier that survives renumbering (see persistent-id.ts), never by the volatile state.i.
+// A state ceding border provinces to a neighbor, or merely being renumbered/renamed while it
+// survives (recreate() renumbers even locked states every era; mutateName() can reword a
+// surviving state's name), is not an event worth calling out - only a birth or a death is.
+// Matched by persistentId, the identifier that survives renumbering (see persistent-id.ts),
+// never by the volatile state.i.
+function getBornAndDiedIds(
+  previousStates: State[],
+  currentStates: State[]
+): { bornIds: Set<number>; diedIds: Set<number> } {
+  const previousPersistentIds = new Set(previousStates.filter(s => s.i && !s.removed).map(s => s.persistentId));
+  const currentPersistentIds = new Set(currentStates.filter(s => s.i && !s.removed).map(s => s.persistentId));
+
+  const bornIds = new Set(
+    [...currentPersistentIds].filter((id): id is number => id !== undefined && !previousPersistentIds.has(id))
+  );
+  const diedIds = new Set(
+    [...previousPersistentIds].filter((id): id is number => id !== undefined && !currentPersistentIds.has(id))
+  );
+  return { bornIds, diedIds };
+}
+
+// Flashes only the footprint of states that were born or died between the two snapshots.
 function highlightChangedTerritory(
   previousCellsState: TypedArray,
   previousStates: State[],
@@ -218,13 +250,7 @@ function highlightChangedTerritory(
 ): void {
   const { cells, vertices } = pack;
 
-  const previousPersistentIds = new Set(
-    previousStates.filter(s => s.i && !s.removed).map(s => s.persistentId)
-  );
-  const currentPersistentIds = new Set(currentStates.filter(s => s.i && !s.removed).map(s => s.persistentId));
-
-  const bornIds = new Set([...currentPersistentIds].filter(id => id !== undefined && !previousPersistentIds.has(id)));
-  const diedIds = new Set([...previousPersistentIds].filter(id => id !== undefined && !currentPersistentIds.has(id)));
+  const { bornIds, diedIds } = getBornAndDiedIds(previousStates, currentStates);
   if (!bornIds.size && !diedIds.size) return;
 
   const previousPersistentIdByIndex = new Map(previousStates.map(s => [s.i, s.persistentId]));
@@ -265,6 +291,75 @@ function highlightChangedTerritory(
     .duration(1000)
     .attr("fill-opacity", 0)
     .remove();
+}
+
+// Short, template-built (no AI) summary of the same birth/death events the highlight flashes -
+// what a state was absorbed by is derived from whichever current state now holds the most of its
+// former land, not stored anywhere, since Wars/Rebellions never record who took what.
+function renderEventLog(
+  previousCellsState: TypedArray,
+  previousStates: State[],
+  currentCellsState: TypedArray,
+  currentStates: State[]
+): void {
+  const container = ensureEl("erasEventLog");
+
+  const { bornIds, diedIds } = getBornAndDiedIds(previousStates, currentStates);
+  if (!bornIds.size && !diedIds.size) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const previousByPersistentId = new Map(previousStates.map(s => [s.persistentId, s]));
+  const currentByPersistentId = new Map(currentStates.map(s => [s.persistentId, s]));
+
+  const lines: string[] = [];
+
+  for (const id of bornIds) {
+    const state = currentByPersistentId.get(id);
+    if (state) lines.push(`🆕 ${state.fullName ?? state.name} is founded`);
+  }
+
+  for (const id of diedIds) {
+    const state = previousByPersistentId.get(id);
+    if (!state) continue;
+    const name = state.fullName ?? state.name;
+    const absorber = findAbsorber(previousCellsState, state.i, currentCellsState, currentStates);
+    lines.push(absorber ? `☠️ ${name} falls, absorbed by ${absorber}` : `☠️ ${name} collapses`);
+  }
+
+  container.innerHTML = lines.map(line => `<div class="erasEventLine">${line}</div>`).join("");
+}
+
+// Whichever current state now holds the most of the dead state's former land cells, if any.
+function findAbsorber(
+  previousCellsState: TypedArray,
+  deadStateIndex: number,
+  currentCellsState: TypedArray,
+  currentStates: State[]
+): string | null {
+  const cellCountByCurrentOwner = new Map<number, number>();
+  for (let cellId = 0; cellId < previousCellsState.length; cellId++) {
+    if (pack.cells.h[cellId] < 20) continue;
+    if (previousCellsState[cellId] !== deadStateIndex) continue;
+
+    const currentOwner = currentCellsState[cellId];
+    if (!currentOwner) continue;
+    cellCountByCurrentOwner.set(currentOwner, (cellCountByCurrentOwner.get(currentOwner) ?? 0) + 1);
+  }
+
+  let bestOwner: number | undefined;
+  let bestCount = 0;
+  for (const [owner, count] of cellCountByCurrentOwner) {
+    if (count > bestCount) {
+      bestOwner = owner;
+      bestCount = count;
+    }
+  }
+  if (bestOwner === undefined) return null;
+
+  const absorber = currentStates.find(s => s.i === bestOwner && !s.removed);
+  return absorber ? absorber.fullName ?? absorber.name : null;
 }
 
 function closeErasEditor(): void {
