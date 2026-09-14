@@ -1,7 +1,9 @@
+import { select } from "d3";
 import { closeDialogs } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
 import { tip } from "@/components/tooltips";
 import { unfog } from "@/renderers/overlays/fogging";
+import type { TypedArray } from "@/types/PackedGraph";
 import { ensureEl } from "../utils";
 
 let playbackTimer: number | undefined;
@@ -126,7 +128,7 @@ function showPlayback(index: number): void {
 function onSliderInput(event: Event): void {
   stopPlayback();
   const index = Number((event.target as HTMLInputElement).value);
-  selectEra(index);
+  selectEra(index, true);
 }
 
 function togglePlayback(): void {
@@ -153,7 +155,7 @@ function startPlayback(): void {
       return;
     }
     slider.value = String(index);
-    selectEra(index);
+    selectEra(index, true);
   }, speed);
 }
 
@@ -175,9 +177,13 @@ function setPlayPauseIcon(isPlaying: boolean): void {
 // Apply one era's political snapshot to the live map and redraw. Geography
 // (heights, rivers, biomes...) is untouched; only what expandStates() itself
 // writes is restored, so this is the exact inverse of taking the snapshot.
-function selectEra(index: number): void {
+// `highlight` flashes the cells whose owning state changed since the map's current state - skipped
+// on the dialog's own opening render, where "changed since" isn't a meaningful comparison yet.
+function selectEra(index: number, highlight = false): void {
   const era = pack.eras?.[index];
   if (!era) return;
+
+  const previousCellsState = highlight ? pack.cells.state.slice() : undefined;
 
   pack.states = structuredClone(era.states);
   pack.cells.state = Uint16Array.from(era.cellsState);
@@ -191,6 +197,45 @@ function selectEra(index: number): void {
   Layers.draw("states", "borders", "provinces", "labels", "burgIcons", "military", "goods", "emblems");
 
   ensureEl("erasYearLabel").textContent = `Year: ${era.year}`;
+
+  if (previousCellsState) highlightChangedTerritory(previousCellsState, pack.cells.state);
+}
+
+// One polygon per land cell that switched owning state between the previous and the new snapshot,
+// briefly overlaid and faded out - reuses the #debug layer the same way states-editor.ts's own
+// border highlight does for a transient, non-interactive overlay.
+function highlightChangedTerritory(previous: TypedArray, current: TypedArray): void {
+  const { cells, vertices } = pack;
+
+  const changedCells: number[] = [];
+  for (let cellId = 0; cellId < current.length; cellId++) {
+    if (cells.h[cellId] < 20) continue; // land only - ownership isn't tracked for ocean cells
+    if (previous[cellId] !== current[cellId]) changedCells.push(cellId);
+  }
+  if (!changedCells.length) return;
+
+  const path = changedCells
+    .map(cellId => {
+      const points = cells.v[cellId].map((vertexId: number) => vertices.p[vertexId]);
+      return `M${points.map(([x, y]: [number, number]) => `${x},${y}`).join("L")}Z`;
+    })
+    .join(" ");
+
+  const layer = select("#debug");
+  layer.selectAll(".eraChangeHighlight").remove();
+  layer
+    .append("path")
+    .attr("class", "eraChangeHighlight")
+    .attr("d", path)
+    .attr("fill", "#ff2222")
+    .attr("fill-opacity", 0.55)
+    .attr("stroke", "none")
+    .style("pointer-events", "none")
+    .transition()
+    .delay(500)
+    .duration(1000)
+    .attr("fill-opacity", 0)
+    .remove();
 }
 
 function closeErasEditor(): void {
