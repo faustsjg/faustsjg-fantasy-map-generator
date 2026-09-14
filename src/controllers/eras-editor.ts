@@ -2,6 +2,7 @@ import { select } from "d3";
 import { closeDialogs } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
 import { tip } from "@/components/tooltips";
+import { Controllers } from "@/controllers";
 import type { State } from "@/generators/states-generator";
 import { unfog } from "@/renderers/overlays/fogging";
 import type { TypedArray } from "@/types/PackedGraph";
@@ -16,6 +17,7 @@ function open(): void {
   ensureEl("erasGenerate").addEventListener("click", generate);
   ensureEl<HTMLInputElement>("erasSlider").addEventListener("input", onSliderInput);
   ensureEl("erasPlayPause").addEventListener("click", togglePlayback);
+  ensureEl("erasEventLog").addEventListener("click", onEventLogClick);
 
   if (pack.eras?.length) showPlayback(pack.eras.length - 1);
 
@@ -129,6 +131,11 @@ function renderDialog(): void {
       font-size: 0.9em;
       padding: 0.1em 0;
       overflow-wrap: break-word;
+    }
+
+    .erasStateLink {
+      cursor: pointer;
+      text-decoration: underline dotted;
     }
   `;
   document.head.append(style);
@@ -341,18 +348,30 @@ function renderEventLog(
 
   for (const id of bornIds) {
     const state = currentByPersistentId.get(id);
-    if (state) lines.push(`🆕 ${state.fullName ?? state.name} is founded`);
+    if (state) lines.push(`🆕 ${stateLink(state)} is founded`);
   }
 
   for (const id of diedIds) {
     const state = previousByPersistentId.get(id);
     if (!state) continue;
-    const name = state.fullName ?? state.name;
+    const name = state.fullName ?? state.name; // no current .i to link to - this state no longer exists
     const absorber = findAbsorber(previousCellsState, state.i, currentCellsState, currentStates);
-    lines.push(absorber ? `☠️ ${name} falls, absorbed by ${absorber}` : `☠️ ${name} collapses`);
+    lines.push(absorber ? `☠️ ${name} falls, absorbed by ${stateLink(absorber)}` : `☠️ ${name} collapses`);
   }
 
   container.innerHTML = lines.map(line => `<div class="erasEventLine">${line}</div>`).join("");
+}
+
+// A state still present in the CURRENT snapshot (so it has a live, clickable state.i) gets a link
+// that opens its Dynasty panel; states that no longer exist just render their name as plain text.
+function stateLink(state: State): string {
+  return `<span class="erasStateLink" data-state-i="${state.i}">${state.fullName ?? state.name}</span>`;
+}
+
+function onEventLogClick(event: Event): void {
+  const link = (event.target as HTMLElement).closest<HTMLElement>(".erasStateLink");
+  if (!link) return;
+  void Controllers.DynastyOverview.open(Number(link.dataset.stateI));
 }
 
 // Whichever current state now holds the most of the dead state's former land cells, if any.
@@ -361,7 +380,7 @@ function findAbsorber(
   deadStateIndex: number,
   currentCellsState: TypedArray,
   currentStates: State[]
-): string | null {
+): State | null {
   const cellCountByCurrentOwner = new Map<number, number>();
   for (let cellId = 0; cellId < previousCellsState.length; cellId++) {
     if (pack.cells.h[cellId] < 20) continue;
@@ -382,8 +401,7 @@ function findAbsorber(
   }
   if (bestOwner === undefined) return null;
 
-  const absorber = currentStates.find(s => s.i === bestOwner && !s.removed);
-  return absorber ? (absorber.fullName ?? absorber.name) : null;
+  return currentStates.find(s => s.i === bestOwner && !s.removed) ?? null;
 }
 
 function closeErasEditor(): void {

@@ -91,6 +91,7 @@ function renderDialog(state: State): void {
       .dynastyReign { padding: 0.15em 0; border-bottom: 1px solid rgba(128, 128, 128, 0.2); overflow-wrap: break-word; }
       .dynastyReign:last-child { border-bottom: none; font-weight: bold; }
       .dynastyReignYears { opacity: 0.8; }
+      .dynastyLiegeLink { cursor: pointer; text-decoration: underline dotted; }
     `;
     document.head.append(style);
   }
@@ -103,6 +104,13 @@ function renderDialog(state: State): void {
   renderRuler(state);
   renderHistory(state);
   updateDialog(dialogId, { width: "26em", position });
+
+  ensureEl("dynastyOverviewRuler").addEventListener("click", ev => {
+    const link = (ev.target as HTMLElement).closest<HTMLElement>(".dynastyLiegeLink");
+    if (!link) return;
+    const liegeState = pack.states[Number(link.dataset.stateI)];
+    if (liegeState?.i && !liegeState.removed) open(liegeState.i);
+  });
 }
 
 function renderRuler(state: State): void {
@@ -114,7 +122,11 @@ function renderRuler(state: State): void {
   }
 
   const liege = ruler.liege !== undefined ? pack.characters?.[ruler.liege] : undefined;
-  const liegeLine = liege ? `<div>Answers to: ${liege.name}, ${liege.role}</div>` : "";
+  const liegeName =
+    liege?.state !== undefined
+      ? `<span class="dynastyLiegeLink" data-state-i="${liege.state}">${liege.name}</span>`
+      : liege?.name;
+  const liegeLine = liege ? `<div>Answers to: ${liegeName}, ${liege.role}</div>` : "";
   const spouseLine = ruler.spouse ? `<div>Spouse: ${ruler.spouse}</div>` : "";
   const childrenLine = ruler.children?.length
     ? `<div>Children: ${ruler.children.map(c => c.name).join(", ")}</div>`
