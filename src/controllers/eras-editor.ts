@@ -3,6 +3,7 @@ import { closeDialogs } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
 import { tip } from "@/components/tooltips";
 import { unfog } from "@/renderers/overlays/fogging";
+import type { State } from "@/generators/states-generator";
 import type { TypedArray } from "@/types/PackedGraph";
 import { ensureEl } from "../utils";
 
@@ -177,13 +178,14 @@ function setPlayPauseIcon(isPlaying: boolean): void {
 // Apply one era's political snapshot to the live map and redraw. Geography
 // (heights, rivers, biomes...) is untouched; only what expandStates() itself
 // writes is restored, so this is the exact inverse of taking the snapshot.
-// `highlight` flashes the cells whose owning state changed since the map's current state - skipped
-// on the dialog's own opening render, where "changed since" isn't a meaningful comparison yet.
+// `highlight` flashes territory whose controlling state was born or died since the map's current
+// state - skipped on the dialog's own opening render, where "since" isn't meaningful yet.
 function selectEra(index: number, highlight = false): void {
   const era = pack.eras?.[index];
   if (!era) return;
 
   const previousCellsState = highlight ? pack.cells.state.slice() : undefined;
+  const previousStates = highlight ? pack.states : undefined;
 
   pack.states = structuredClone(era.states);
   pack.cells.state = Uint16Array.from(era.cellsState);
@@ -198,19 +200,46 @@ function selectEra(index: number, highlight = false): void {
 
   ensureEl("erasYearLabel").textContent = `Year: ${era.year}`;
 
-  if (previousCellsState) highlightChangedTerritory(previousCellsState, pack.cells.state);
+  if (previousCellsState && previousStates) {
+    highlightChangedTerritory(previousCellsState, previousStates, pack.cells.state, pack.states);
+  }
 }
 
-// One polygon per land cell that switched owning state between the previous and the new snapshot,
-// briefly overlaid and faded out - reuses the #debug layer the same way states-editor.ts's own
-// border highlight does for a transient, non-interactive overlay.
-function highlightChangedTerritory(previous: TypedArray, current: TypedArray): void {
+// Flashes only the footprint of states that were born or died between the two snapshots - a state
+// ceding border provinces to a neighbor, or merely being renumbered/renamed while it survives
+// (recreate() renumbers even locked states every era; mutateName() can reword a surviving state's
+// name), is not a "change" worth calling out, only a birth or a death is. Matched by persistentId,
+// the identifier that survives renumbering (see persistent-id.ts), never by the volatile state.i.
+function highlightChangedTerritory(
+  previousCellsState: TypedArray,
+  previousStates: State[],
+  currentCellsState: TypedArray,
+  currentStates: State[]
+): void {
   const { cells, vertices } = pack;
 
+  const previousPersistentIds = new Set(
+    previousStates.filter(s => s.i && !s.removed).map(s => s.persistentId)
+  );
+  const currentPersistentIds = new Set(currentStates.filter(s => s.i && !s.removed).map(s => s.persistentId));
+
+  const bornIds = new Set([...currentPersistentIds].filter(id => id !== undefined && !previousPersistentIds.has(id)));
+  const diedIds = new Set([...previousPersistentIds].filter(id => id !== undefined && !currentPersistentIds.has(id)));
+  if (!bornIds.size && !diedIds.size) return;
+
+  const previousPersistentIdByIndex = new Map(previousStates.map(s => [s.i, s.persistentId]));
+  const currentPersistentIdByIndex = new Map(currentStates.map(s => [s.i, s.persistentId]));
+
   const changedCells: number[] = [];
-  for (let cellId = 0; cellId < current.length; cellId++) {
+  for (let cellId = 0; cellId < currentCellsState.length; cellId++) {
     if (cells.h[cellId] < 20) continue; // land only - ownership isn't tracked for ocean cells
-    if (previous[cellId] !== current[cellId]) changedCells.push(cellId);
+
+    const currentPersistentId = currentPersistentIdByIndex.get(currentCellsState[cellId]);
+    const previousPersistentId = previousPersistentIdByIndex.get(previousCellsState[cellId]);
+    const isNowNewlyBorn = currentPersistentId !== undefined && bornIds.has(currentPersistentId);
+    const wasPreviouslyOfDeadState = previousPersistentId !== undefined && diedIds.has(previousPersistentId);
+
+    if (isNowNewlyBorn || wasPreviouslyOfDeadState) changedCells.push(cellId);
   }
   if (!changedCells.length) return;
 
