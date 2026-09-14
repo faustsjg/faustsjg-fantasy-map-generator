@@ -32,7 +32,7 @@ registerRoute(
 
 registerRoute(
   ({request}) => request.destination === "style",
-  new CacheFirst({
+  new StaleWhileRevalidate({
     cacheName: "fmg-stylesheets",
     plugins: [
       new CacheableResponsePlugin({statuses: [0, 200]}),
