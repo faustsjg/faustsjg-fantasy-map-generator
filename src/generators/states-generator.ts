@@ -21,7 +21,6 @@ import {
 } from "../utils";
 import type { Label } from "./labels-generator";
 import type { Regiment } from "./military-generator";
-import type { StateLore } from "./state-lore";
 
 declare global {
   var States: StatesModule;
@@ -60,7 +59,6 @@ export interface State {
   pollTax: number;
   treasury: number;
   label?: Label;
-  lore?: StateLore;
 }
 
 export interface Campaign {

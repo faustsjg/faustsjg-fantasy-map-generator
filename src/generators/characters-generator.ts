@@ -1,8 +1,7 @@
 // Named individuals living in the world: rulers, provincial nobles, guild masters, and ordinary
 // people known for something small - worldbuilding texture, not adventure hooks or quest-givers.
 // Titles, dynasties and family ties are all derived procedurally from the existing state/province
-// data (form, diplomacy) - nothing here is AI-generated. Only the on-demand bio (characters-overview.ts)
-// calls out to the AI generator, and only when a user clicks for it.
+// data (form, diplomacy) - nothing here is AI-generated.
 import { getNextPersistentId } from "@/generators/persistent-id";
 import { getRandomColor, minmax, P, ra, rand, rw } from "@/utils";
 import type { Burg } from "./burgs-generator";
@@ -35,7 +34,6 @@ export interface Character {
   spouseState?: number; // for a ruler married into another crown: that state's i
   spouseProvince?: number; // for a noble married into another county: that province's i
   age?: number; // in years; drives succession together with the culture's lifespan
-  bio?: string; // filled in on demand via the AI generator, not at generation time
   removed?: boolean;
 }
 

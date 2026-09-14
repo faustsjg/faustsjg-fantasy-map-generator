@@ -8,7 +8,6 @@ import {
   renderEditorPagination,
   type TableView
 } from "@/components/dialog/table";
-import { Controllers } from "@/controllers";
 import type { Character } from "@/generators/characters-generator";
 import { downloadFile, getFileName } from "@/utils";
 import { ensureEl } from "../utils";
@@ -44,8 +43,7 @@ const columns: EditorColumn<Character>[] = [
     width: "9em",
     sortBy: character => getCultureName(character),
     sortType: "alpha"
-  },
-  { key: "actions", width: "1.2em", permanent: true }
+  }
 ];
 
 const charactersTable = initEditorTable<Character>({ getData: getCharacters, onUpdate: renderCharactersPage });
@@ -101,11 +99,6 @@ function renderDialog(): void {
     const character = (pack.characters ?? []).find(c => c.i === Number(line.dataset.id));
     if (!character) return;
 
-    if (el.closest(".characterBio")) {
-      generateBio(character);
-      return;
-    }
-
     const burg = pack.burgs[character.burg];
     if (burg) zoomTo(burg.x, burg.y, 8, 2000);
   });
@@ -149,7 +142,6 @@ function renderCharactersPage(view: TableView<Character>): void {
 }
 
 function renderCharacterLine(character: Character): string {
-  const bioTip = character.bio ? character.bio.replace(/"/g, "&quot;") : "Click to generate a short biography";
   return /* html */ `<div class="states characterLine" data-id="${character.i}">
       <div data-col="importance">${character.importance}</div>
       <div data-col="role">${character.role}</div>
@@ -158,39 +150,11 @@ function renderCharacterLine(character: Character): string {
       <div data-col="liege" data-tip="${getLiegeLabel(character)}">${getLiegeName(character) || "—"}</div>
       <div data-col="burg" class="pointer" data-tip="Click to zoom">${getBurgName(character)}</div>
       <div data-col="culture">${getCultureName(character)}</div>
-      <div data-col="actions" class="characterBio pointer" data-tip="${bioTip}">
-        <span class="${character.bio ? "icon-info-circled" : "icon-plus-circled"}"></span>
-      </div>
     </div>`;
 }
 
-function generateBio(character: Character): void {
-  void Controllers.AiGenerator.open({
-    defaultPrompt: buildBioPrompt(character),
-    onApply: result => {
-      character.bio = result.trim();
-      charactersTable.refresh();
-    }
-  });
-}
-
-function buildBioPrompt(character: Character): string {
-  const burgName = getBurgName(character) || "an unnamed settlement";
-  const cultureName = getCultureName(character) || "an unknown";
-  const dynasty = character.dynasty ? ` of ${character.dynasty}` : "";
-  const liegeName = getLiegeName(character);
-  const fealty = liegeName ? ` They answer to ${liegeName}.` : "";
-  const family =
-    character.spouse || character.children?.length
-      ? ` They are married to ${character.spouse ?? "someone from another house"}${
-          character.children?.length ? ` and have ${character.children.length} children` : ""
-        }.`
-      : "";
-  return `Write a short biography (3-5 sentences) for ${character.name}${dynasty}, ${character.role}, who lives in ${burgName}. They are of ${cultureName} culture.${fealty}${family} Keep it grounded and mundane: an ordinary, believable life - no quests, no prophecies, no epic destiny. Plain text, no markdown, no headings.`;
-}
-
 function downloadCharactersCsv(): void {
-  let csv = "Id,Importance,Role,Name,Dynasty,Liege,Spouse,Children,Burg,Culture,Bio\n";
+  let csv = "Id,Importance,Role,Name,Dynasty,Liege,Spouse,Children,Burg,Culture\n";
   for (const character of pack.characters ?? []) {
     if (character.removed) continue;
     csv += [
@@ -203,8 +167,7 @@ function downloadCharactersCsv(): void {
       character.spouse ?? "",
       `"${(character.children ?? []).map(child => child.name).join("; ")}"`,
       getBurgName(character),
-      getCultureName(character),
-      `"${(character.bio ?? "").replace(/"/g, '""')}"`
+      getCultureName(character)
     ].join(",");
     csv += "\n";
   }
