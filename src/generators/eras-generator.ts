@@ -45,7 +45,19 @@ class ErasModule {
     for (let n = 1; n < eraCount; n++) {
       options.year += yearsPerEra;
       this.applySuccession();
-      window.States.regenerate();
+
+      // States.recreate() refuses to run (and leaves pack.states/pack.cells.state completely
+      // untouched) when every valid state happens to lock at once - with few states and high
+      // survival odds this is a real, reachable outcome, not just a theoretical one. Nothing
+      // about this era's political map actually changed, so there's nothing meaningful to
+      // snapshot: stop here rather than pushing a stale duplicate era and re-running
+      // Wars/Rebellions/Characters against territory that was never regenerated for this year.
+      const { error } = window.States.regenerate() ?? {};
+      if (error) {
+        options.year -= yearsPerEra;
+        break;
+      }
+
       Wars.resolveCampaigns();
       Rebellions.resolve();
       Characters.applySuccession(yearsPerEra);

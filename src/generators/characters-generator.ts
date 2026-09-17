@@ -3,7 +3,7 @@
 // Titles, dynasties and family ties are all derived procedurally from the existing state/province
 // data (form, diplomacy) - nothing here is AI-generated.
 import { getNextPersistentId } from "@/generators/persistent-id";
-import { getRandomColor, minmax, P, ra, rand, rw } from "@/utils";
+import { getRandomColor, minmax, P, ra, rand, rw, withAnnotation } from "@/utils";
 import type { Burg } from "./burgs-generator";
 import type { Province } from "./provinces-generator";
 import type { State } from "./states-generator";
@@ -267,6 +267,11 @@ class CharactersModule {
     const characters: Character[] = [];
     const rulerByState = new Map<number, number>();
     const extinctions: { state: State; prior: Character }[] = [];
+    // set by trySplitRealm/resolveMarriageMerge whenever they move cells between states - mirrors
+    // Wars.resolveCampaigns()/Rebellions.resolve()'s own "anyChange -> collectStatistics()" pattern,
+    // so a state's area/rural/urban (and the treasury Eras.updateTreasuries() derives from them)
+    // never reflect stale, pre-split/pre-merger territory for this era
+    let territoryChanged = false;
 
     // snapshotted so a splinter state created mid-loop (see trySplitRealm) isn't re-visited this
     // same pass - it gets its own succession/lock decision starting next era, like any other state
@@ -302,15 +307,16 @@ class CharactersModule {
       const handedOver = succeeded && prior && succeeded.name !== prior.name;
       if (handedOver && (law === "agnatic" || law === "male-preference") && P(SUCCESSION_CRISIS_CHANCE)) {
         const runnerUp = this.getRunnerUpHeir(prior?.children, law, succeeded.name);
-        if (runnerUp) this.trySplitRealm(state, index, runnerUp, characters, rulerByState);
+        if (runnerUp && this.trySplitRealm(state, index, runnerUp, characters, rulerByState)) territoryChanged = true;
       }
     }
     this.linkStateLieges(characters, rulerByState);
 
     // a childless ruler married into another crown doesn't end their line - the crowns merge
     for (const { state, prior } of extinctions) {
-      this.resolveMarriageMerge(state, prior, characters, rulerByState);
+      if (this.resolveMarriageMerge(state, prior, characters, rulerByState)) territoryChanged = true;
     }
+    if (territoryChanged) window.States.collectStatistics(); // refresh area/burgs/rural/urban after territory moved
 
     const nobleByProvince = new Map<number, number>();
     const provinceAdjacency = this.buildProvinceAdjacency();
@@ -417,14 +423,14 @@ class CharactersModule {
     prior: Character,
     characters: Character[],
     rulerByState: Map<number, number>
-  ): void {
-    if (prior.spouseState === undefined) return;
+  ): boolean {
+    if (prior.spouseState === undefined) return false;
 
     const survivor = pack.states[prior.spouseState];
-    if (!survivor || !survivor.i || survivor.removed || survivor.i === state.i) return;
+    if (!survivor || !survivor.i || survivor.removed || survivor.i === state.i) return false;
 
     const survivorRulerIndex = rulerByState.get(survivor.i);
-    if (survivorRulerIndex === undefined) return;
+    if (survivorRulerIndex === undefined) return false;
 
     const absorbedRulerIndex = rulerByState.get(state.i);
     if (absorbedRulerIndex !== undefined) {
@@ -456,8 +462,9 @@ class CharactersModule {
     }
 
     state.removed = true;
-    survivor.fullName = `${survivor.fullName} (united with ${state.name})`;
+    survivor.fullName = withAnnotation(survivor.fullName ?? survivor.name, `united with ${state.name}`);
     characters[survivorRulerIndex].role = `${characters[survivorRulerIndex].role}, uniting the crown of ${state.name}`;
+    return true;
   }
 
   // the inverse of a merge: carves roughly half of the realm's provinces into a brand new state
@@ -469,16 +476,16 @@ class CharactersModule {
     runnerUp: Child,
     characters: Character[],
     rulerByState: Map<number, number>
-  ): void {
+  ): boolean {
     const provinces = (pack.provinces ?? []).filter(
       province => province.i && !province.removed && province.state === state.i
     );
-    if (provinces.length < 2) return;
+    if (provinces.length < 2) return false;
 
     const splinterProvinces = provinces.slice(Math.max(1, Math.floor(provinces.length / 2)));
     const seatProvince = splinterProvinces[0];
     const seatBurg = pack.burgs[seatProvince.burg];
-    if (!seatBurg || !seatBurg.i || seatBurg.removed) return;
+    if (!seatBurg || !seatBurg.i || seatBurg.removed) return false;
 
     const newStateId = pack.states.length;
     const newState: State = {
@@ -529,6 +536,7 @@ class CharactersModule {
     characters.push(newRuler);
 
     characters[primaryRulerIndex].role = `${characters[primaryRulerIndex].role} (realm divided among siblings)`;
+    return true;
   }
 
   // one pass over every cell, recording which provinces actually share a border - so county
@@ -613,7 +621,7 @@ class CharactersModule {
     }
 
     province.removed = true;
-    survivor.fullName = `${survivor.fullName} (united with ${originalName})`;
+    survivor.fullName = withAnnotation(survivor.fullName ?? survivor.name, `united with ${originalName}`);
     characters[survivorNobleIndex].role =
       `${characters[survivorNobleIndex].role}, uniting the county of ${originalName}`;
   }

@@ -9,7 +9,7 @@
 // winnable in the first place.
 import type { Province } from "@/generators/provinces-generator";
 import type { State } from "@/generators/states-generator";
-import { gauss } from "@/utils";
+import { gauss, withAnnotation } from "@/utils";
 
 // at most a third of the loser's bordering provinces change hands per era - conquering a state
 // takes several eras of sustained war, not one lucky roll
@@ -81,12 +81,7 @@ class WarsModule {
         }
       }
       defender.removed = true;
-      // strip any earlier "(absorbed ...)"/"(rebelled against ...)" tag before appending this
-      // one, rather than piling on top of it - otherwise a state that keeps conquering across
-      // eras ends up with an ever-growing name like "X (absorbed Y) (absorbed Z) (absorbed W)...";
-      // this keeps at most the single most recent annotation, everywhere fullName is displayed
-      const baseName = (attacker.fullName ?? attacker.name).replace(/(\s*\([^()]*\))+$/, "");
-      attacker.fullName = `${baseName} (absorbed ${defender.name})`;
+      attacker.fullName = withAnnotation(attacker.fullName ?? attacker.name, `absorbed ${defender.name}`);
     }
 
     return true;

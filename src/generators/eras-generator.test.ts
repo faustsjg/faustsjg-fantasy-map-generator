@@ -111,6 +111,21 @@ describe("ErasModule.generate", () => {
     expect(applySuccession).toHaveBeenCalledWith(50);
   });
 
+  it("stops generating further eras once States.regenerate reports every state locked, without advancing options.year for that attempt", () => {
+    regenerate.mockReturnValueOnce({}).mockReturnValueOnce({ error: "Unable to regenerate as all states are locked" });
+
+    const eras = ErasModule.generate(4, 50);
+
+    // era 0 (immediate snapshot) + era 1 (regenerate succeeded) - era 2's regenerate failed, so
+    // generation stops there instead of pushing a stale 3rd/4th era
+    expect(eras.map((e: any) => e.year)).toEqual([1000, 1050]);
+    expect(regenerate).toHaveBeenCalledTimes(2);
+    // options.year should reflect only the eras actually generated, not the failed attempt
+    expect(globalThis.options.year).toBe(1050);
+    // the failed era never regenerated, so nothing downstream should run for it either
+    expect(applySuccession).toHaveBeenCalledTimes(1);
+  });
+
   it("locks every state when P() always succeeds, so all survive into the next era", () => {
     ErasModule.generate(2, 100);
     // both non-neutral states get evaluated for survival; with P() forced true both are locked

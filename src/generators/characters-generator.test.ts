@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { COMMONER_ARCHETYPES } from "./characters-generator";
 
 function makeBurg(overrides: Record<string, unknown> = {}) {
@@ -426,6 +426,8 @@ describe("CharactersModule.applySuccession", () => {
       getCultureShort: (culture: number) => `Short-${culture}`,
       getState: (name: string, culture: number) => `${name}Place-${culture}`
     } as any;
+    globalThis.window = globalThis.window || ({} as any);
+    globalThis.window.States = { collectStatistics: vi.fn() } as any;
     const module = await import("./characters-generator");
     Characters = module.Characters;
   });
@@ -604,6 +606,10 @@ describe("CharactersModule.applySuccession", () => {
 
     const stillClaimsState1 = globalThis.pack.characters!.some((c: any) => c.state === 1 && !c.removed);
     expect(stillClaimsState1).toBe(false);
+
+    // territory moved between states - area/rural/urban must be refreshed for this era, or the
+    // merged survivor's stats (and anything derived from them, like Eras.updateTreasuries()) stay stale
+    expect(globalThis.window.States.collectStatistics).toHaveBeenCalledTimes(1);
   });
 
   it("merges a childless county into its spouse's county on succession", () => {
@@ -844,6 +850,10 @@ describe("CharactersModule.applySuccession", () => {
     expect(globalThis.pack.provinces[2].state).toBe(newState!.i);
     expect(globalThis.pack.provinces[1].state).toBe(primaryRuler!.state); // the original half stays put
     expect(Array.from(globalThis.pack.cells.state)).toEqual([0, primaryRuler!.state, primaryRuler!.state, newState!.i]);
+
+    // territory moved to the new splinter state - area/rural/urban must be refreshed for this era,
+    // or the parent state's stats stay inflated and the splinter's stay at 0
+    expect(globalThis.window.States.collectStatistics).toHaveBeenCalledTimes(1);
   });
 
   it("does not split a realm with fewer than two provinces", () => {
@@ -871,6 +881,7 @@ describe("CharactersModule.applySuccession", () => {
     expect(globalThis.pack.states).toHaveLength(2); // no new state was created
     const primaryRuler = globalThis.pack.characters!.find((c: any) => c.name === "ElderSon");
     expect(primaryRuler!.role).not.toContain("divided");
+    expect(globalThis.window.States.collectStatistics).not.toHaveBeenCalled(); // no territory moved
   });
 
   it("rolls a succession law once per culture and keeps it fixed afterward", () => {

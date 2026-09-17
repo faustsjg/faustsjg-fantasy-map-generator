@@ -121,6 +121,22 @@ export const sanitizeId = (inputString: string) => {
   return sanitized;
 };
 
+/**
+ * Append a "(...)" annotation to a name, replacing any trailing annotation(s) already there
+ * instead of piling the new one on top - so a name that keeps picking up one-off historical
+ * notes (a conquest, a dynastic union...) over many repeated events never grows unbounded.
+ * @param {string} name - The base name, possibly already carrying trailing "(...)" annotation(s)
+ * @param {string} annotation - The new annotation's inner text, without parentheses
+ * @returns {string} - The name with exactly one trailing "(annotation)"
+ *
+ * @example
+ * withAnnotation("Kingdom of X (absorbed Y)", "absorbed Z") // "Kingdom of X (absorbed Z)"
+ */
+export const withAnnotation = (name: string, annotation: string): string => {
+  const baseName = name.replace(/(\s*\([^()]*\))+$/, "");
+  return `${baseName} (${annotation})`;
+};
+
 declare global {
   interface Window {
     round: typeof round;

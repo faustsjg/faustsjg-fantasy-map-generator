@@ -152,7 +152,17 @@ function generate(): void {
 
   stopPlayback();
   window.Eras.generate(count, years);
-  showPlayback(pack.eras!.length - 1);
+
+  const actualCount = pack.eras?.length ?? 0;
+  if (actualCount < count) {
+    tip(
+      `Generated only ${actualCount} of ${count} eras: every surviving state locked at once in one era, leaving nothing left to regenerate`,
+      false,
+      "warn"
+    );
+  }
+
+  showPlayback(actualCount - 1);
 }
 
 function showPlayback(index: number): void {
@@ -220,7 +230,9 @@ function setPlayPauseIcon(isPlaying: boolean): void {
 
 // Apply one era's political snapshot to the live map and redraw. Geography
 // (heights, rivers, biomes...) is untouched; only what expandStates() itself
-// writes is restored, so this is the exact inverse of taking the snapshot.
+// writes, plus pack.characters, is restored, so this is the exact inverse of
+// taking the snapshot - without restoring characters too, Dynasty Overview
+// would keep showing whichever era was generated last instead of this one.
 // `highlight` flashes territory whose controlling state was born or died since the map's current
 // state - skipped on the dialog's own opening render, where "since" isn't meaningful yet.
 function selectEra(index: number, highlight = false): void {
@@ -232,6 +244,7 @@ function selectEra(index: number, highlight = false): void {
 
   pack.states = structuredClone(era.states);
   pack.cells.state = Uint16Array.from(era.cellsState);
+  pack.characters = structuredClone(era.characters);
 
   for (const burg of pack.burgs) {
     if (!burg.i || burg.removed) continue;

@@ -29,7 +29,16 @@ import { applyOption, ensureEl, findEl, getComposedPath, getNextId, getPointer }
 import { connectVertices, findPath, getIsolines, getPolesOfInaccessibility, getVertexPath } from "./pathUtils";
 import { biased, each, gauss, generateSeed, getNumberInRange, P, Pint, ra, rand, rw } from "./probabilityUtils";
 import { findAllInQuadtree } from "./quadtree";
-import { capitalize, isValidJSON, parseTransform, round, safeParseJSON, sanitizeId, splitInTwo } from "./stringUtils";
+import {
+  capitalize,
+  isValidJSON,
+  parseTransform,
+  round,
+  safeParseJSON,
+  sanitizeId,
+  splitInTwo,
+  withAnnotation
+} from "./stringUtils";
 import {
   convertTemperature,
   formatPrice,
@@ -202,5 +211,6 @@ export {
   trimVowels,
   unique,
   uploadFile,
-  wiki
+  wiki,
+  withAnnotation
 };
