@@ -81,7 +81,12 @@ class WarsModule {
         }
       }
       defender.removed = true;
-      attacker.fullName = `${attacker.fullName ?? attacker.name} (absorbed ${defender.name})`;
+      // strip any earlier "(absorbed ...)"/"(rebelled against ...)" tag before appending this
+      // one, rather than piling on top of it - otherwise a state that keeps conquering across
+      // eras ends up with an ever-growing name like "X (absorbed Y) (absorbed Z) (absorbed W)...";
+      // this keeps at most the single most recent annotation, everywhere fullName is displayed
+      const baseName = (attacker.fullName ?? attacker.name).replace(/(\s*\([^()]*\))+$/, "");
+      attacker.fullName = `${baseName} (absorbed ${defender.name})`;
     }
 
     return true;

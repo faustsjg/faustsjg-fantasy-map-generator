@@ -102,6 +102,26 @@ describe("WarsModule.resolveCampaigns", () => {
     expect(attacker.fullName).toBe("Bigland (absorbed Smallland)");
   });
 
+  it("replaces any earlier absorption/rebellion tag instead of piling a new one on top of it", () => {
+    const attacker = makeState({
+      i: 1,
+      fullName: "Bigland (rebelled against Oldland) (absorbed Midland)", // simulates two prior eras' worth of tags
+      campaigns: [{ name: "War", start: 1000, attacker: 1, defender: 2 }]
+    });
+    const defender = makeState({ i: 2, name: "Smallland", area: 5, expansionism: 1, capital: 2, campaigns: [] });
+
+    globalThis.pack = {
+      states: [0 as any, attacker, defender],
+      burgs: [0 as any, { i: 1, cell: 1, state: 1 }, { i: 2, cell: 2, state: 2 }],
+      provinces: [0 as any, makeProvince({ i: 1, state: 1 }), makeProvince({ i: 2, state: 2 })],
+      cells: { i: [0, 1, 2], c: [[], [2], [1]], state: [0, 1, 2], province: [0, 1, 2] }
+    } as any;
+
+    Wars.resolveCampaigns();
+
+    expect(attacker.fullName).toBe("Bigland (absorbed Smallland)");
+  });
+
   it("does not take territory when the attacker isn't decisively stronger", () => {
     (gauss as any).mockReturnValue(10); // max threshold: attacker would need to be 10x the defender's power
 
