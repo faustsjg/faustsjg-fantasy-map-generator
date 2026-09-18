@@ -725,12 +725,7 @@ describe("CharactersModule.applySuccession", () => {
 
     globalThis.options = { year: 1000 } as any;
     globalThis.pack = {
-      burgs: [
-        0 as any,
-        makeBurg({ i: 1, state: 1 }),
-        makeBurg({ i: 2, state: 2 }),
-        makeBurg({ i: 3, state: 3 })
-      ],
+      burgs: [0 as any, makeBurg({ i: 1, state: 1 }), makeBurg({ i: 2, state: 2 }), makeBurg({ i: 3, state: 3 })],
       states: [
         0 as any,
         makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, lock: true }),

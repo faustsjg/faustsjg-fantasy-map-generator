@@ -135,12 +135,7 @@ describe("WarsModule.resolveCampaigns", () => {
 
     globalThis.pack = {
       states: [0 as any, attacker, defender2, defender3],
-      burgs: [
-        0 as any,
-        { i: 1, cell: 1, state: 1 },
-        { i: 2, cell: 2, state: 2 },
-        { i: 3, cell: 3, state: 3 }
-      ],
+      burgs: [0 as any, { i: 1, cell: 1, state: 1 }, { i: 2, cell: 2, state: 2 }, { i: 3, cell: 3, state: 3 }],
       provinces: [
         0 as any,
         makeProvince({ i: 1, state: 1 }),
