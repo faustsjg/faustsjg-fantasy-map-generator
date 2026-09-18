@@ -131,8 +131,8 @@ describe("CharactersModule.generate", () => {
     Characters.generate();
     const king = globalThis.pack.characters!.find((c: any) => c.role === "King of Kingland");
     const duke = globalThis.pack.characters!.find((c: any) => c.role === "Duke of Dukeland");
-    expect(duke!.spouseState).toBe(king!.state);
-    expect(king!.spouseState).toBe(duke!.state);
+    expect(duke!.spouseStatePersistentId).toBe(king!.statePersistentId);
+    expect(king!.spouseStatePersistentId).toBe(duke!.statePersistentId);
     expect(duke!.spouse).toBe(king!.name);
     expect(king!.spouse).toBe(duke!.name);
   });
@@ -154,7 +154,7 @@ describe("CharactersModule.generate", () => {
 
     Characters.generate();
     for (const character of globalThis.pack.characters!) {
-      expect(character.spouseState).toBeUndefined();
+      expect(character.spouseStatePersistentId).toBeUndefined();
     }
   });
 
@@ -176,8 +176,8 @@ describe("CharactersModule.generate", () => {
     Characters.generate();
     const king = globalThis.pack.characters!.find((c: any) => c.state === 1);
     const duke = globalThis.pack.characters!.find((c: any) => c.state === 2);
-    expect(duke!.spouseState).toBe(1);
-    expect(king!.spouseState).toBe(2);
+    expect(duke!.spouseStatePersistentId).toBe(1);
+    expect(king!.spouseStatePersistentId).toBe(2);
   });
 
   it("does not form a marriage alliance when the roll fails", () => {
@@ -197,7 +197,7 @@ describe("CharactersModule.generate", () => {
 
     Characters.generate();
     for (const character of globalThis.pack.characters!) {
-      expect(character.spouseState).toBeUndefined();
+      expect(character.spouseStatePersistentId).toBeUndefined();
     }
   });
 
@@ -239,8 +239,8 @@ describe("CharactersModule.generate", () => {
     Characters.generate();
     const nobleA = globalThis.pack.characters!.find((c: any) => c.province === 1);
     const nobleB = globalThis.pack.characters!.find((c: any) => c.province === 2);
-    expect(nobleB!.spouseProvince).toBe(1);
-    expect(nobleA!.spouseProvince).toBe(2);
+    expect(nobleB!.spouseProvincePersistentId).toBe(1);
+    expect(nobleA!.spouseProvincePersistentId).toBe(2);
     expect(nobleB!.spouse).toBe(nobleA!.name);
   });
 
@@ -263,8 +263,8 @@ describe("CharactersModule.generate", () => {
     Characters.generate();
     const nobleA = globalThis.pack.characters!.find((c: any) => c.province === 1);
     const nobleB = globalThis.pack.characters!.find((c: any) => c.province === 2);
-    expect(nobleA!.spouseProvince).toBeUndefined();
-    expect(nobleB!.spouseProvince).toBeUndefined();
+    expect(nobleA!.spouseProvincePersistentId).toBeUndefined();
+    expect(nobleB!.spouseProvincePersistentId).toBeUndefined();
   });
 
   it("does not marry nobles across different states", () => {
@@ -285,8 +285,8 @@ describe("CharactersModule.generate", () => {
     Characters.generate();
     const nobleA = globalThis.pack.characters!.find((c: any) => c.province === 1);
     const nobleB = globalThis.pack.characters!.find((c: any) => c.province === 2);
-    expect(nobleA!.spouseProvince).toBeUndefined();
-    expect(nobleB!.spouseProvince).toBeUndefined();
+    expect(nobleA!.spouseProvincePersistentId).toBeUndefined();
+    expect(nobleB!.spouseProvincePersistentId).toBeUndefined();
   });
 
   it("renames the province after its noble when the founder-naming roll succeeds", () => {
@@ -557,7 +557,7 @@ describe("CharactersModule.applySuccession", () => {
       dynasty: "House A",
       state: 1,
       spouse: "RulerB",
-      spouseState: 2,
+      spouseStatePersistentId: 2,
       children: undefined // no heir - this line goes extinct, but it's married into state 2
     });
     const priorB = {
@@ -571,7 +571,7 @@ describe("CharactersModule.applySuccession", () => {
       state: 2,
       statePersistentId: 2,
       spouse: "RulerA",
-      spouseState: 1,
+      spouseStatePersistentId: 1,
       children: [{ name: "BHeir", gender: "m" }] // has its own heir - never goes extinct
     };
 
@@ -612,6 +612,147 @@ describe("CharactersModule.applySuccession", () => {
     expect(globalThis.window.States.collectStatistics).toHaveBeenCalledTimes(1);
   });
 
+  it("still merges into the correct spouse's crown even after that state's .i was renumbered since the marriage was formed", () => {
+    Math.random = () => 0; // succession always triggers
+
+    // the marriage was formed some earlier era against a state that was .i=2 back then; states get
+    // renumbered every era (States.recreate() does this even for locked/surviving states) - this era
+    // that same state (still identified by persistentId 2) has been renumbered down to .i=5
+    const priorA = makePriorRuler({
+      i: 0,
+      name: "RulerA",
+      burg: 1,
+      role: "King of Kingland",
+      dynasty: "House A",
+      state: 1,
+      spouse: "RulerB",
+      spouseStatePersistentId: 2,
+      children: undefined
+    });
+    const priorB = {
+      i: 1,
+      name: "RulerB",
+      burg: 2,
+      culture: 1,
+      role: "Duke of Dukeland",
+      importance: "notable",
+      dynasty: "House B",
+      state: 5,
+      statePersistentId: 2,
+      spouse: "RulerA",
+      spouseStatePersistentId: 1,
+      children: [{ name: "BHeir", gender: "m" }]
+    };
+
+    globalThis.options = { year: 1000 } as any;
+    globalThis.pack = {
+      burgs: [
+        0 as any,
+        makeBurg({ i: 1, state: 1, cell: 1 }),
+        0 as any,
+        0 as any,
+        0 as any,
+        makeBurg({ i: 5, state: 5, cell: 2 })
+      ],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, lock: true, diplomacy: ["x", "x"] }),
+        0 as any,
+        0 as any,
+        0 as any,
+        makeState({
+          i: 5,
+          persistentId: 2,
+          name: "Dukeland",
+          formName: "Duchy",
+          capital: 5,
+          lock: true,
+          diplomacy: ["x", "x"]
+        })
+      ],
+      guilds: [],
+      provinces: [],
+      characters: [priorA, priorB],
+      cells: { i: [0, 1, 2], state: [0, 1, 5] },
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    expect(globalThis.pack.states[1].removed).toBe(true);
+    expect(globalThis.pack.states[5].removed).toBeFalsy();
+    expect(globalThis.pack.states[5].fullName).toContain("united with Kingland");
+  });
+
+  it("combines two crowns absorbed by the same survivor in one era into a single annotation", () => {
+    Math.random = () => 0; // succession always triggers for all three states
+
+    const priorA = makePriorRuler({
+      i: 0,
+      name: "RulerA",
+      burg: 1,
+      role: "King of Kingland",
+      dynasty: "House A",
+      state: 1,
+      spouse: "RulerSurvivor",
+      spouseStatePersistentId: 3,
+      children: undefined // no heir - goes extinct, married into the survivor
+    });
+    const priorB = makePriorRuler({
+      i: 1,
+      name: "RulerB",
+      burg: 2,
+      role: "Duke of Dukeland",
+      dynasty: "House B",
+      state: 2,
+      spouse: "RulerSurvivor",
+      spouseStatePersistentId: 3,
+      children: undefined // no heir - also goes extinct, also married into the survivor
+    });
+    const priorSurvivor = {
+      i: 2,
+      name: "RulerSurvivor",
+      burg: 3,
+      culture: 1,
+      role: "Grand Duke of Grandland",
+      importance: "notable",
+      dynasty: "House S",
+      state: 3,
+      statePersistentId: 3,
+      spouse: "RulerA",
+      children: [{ name: "SurvivorHeir", gender: "m" }] // has its own heir - never goes extinct
+    };
+
+    globalThis.options = { year: 1000 } as any;
+    globalThis.pack = {
+      burgs: [
+        0 as any,
+        makeBurg({ i: 1, state: 1 }),
+        makeBurg({ i: 2, state: 2 }),
+        makeBurg({ i: 3, state: 3 })
+      ],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, lock: true }),
+        makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, lock: true }),
+        makeState({ i: 3, name: "Grandland", formName: "Grand Duchy", capital: 3, lock: true })
+      ],
+      guilds: [],
+      provinces: [],
+      characters: [priorA, priorB, priorSurvivor],
+      cells: { i: [0, 1, 2, 3], state: [0, 1, 2, 3] },
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    expect(globalThis.pack.states[1].removed).toBe(true);
+    expect(globalThis.pack.states[2].removed).toBe(true);
+    expect(globalThis.pack.states[3].removed).toBeFalsy();
+    // both mergers happened in this one era - neither should be lost to the other overwriting it
+    expect(globalThis.pack.states[3].fullName).toBe("Grandland (united with Kingland, united with Dukeland)");
+  });
+
   it("merges a childless county into its spouse's county on succession", () => {
     Math.random = () => 0; // succession always triggers for both nobles
 
@@ -626,7 +767,7 @@ describe("CharactersModule.applySuccession", () => {
       province: 1,
       provincePersistentId: 1,
       spouse: "NobleB",
-      spouseProvince: 2
+      spouseProvincePersistentId: 2
       // no children - this line goes extinct, but it's married into county 2
     };
     const priorB = {
@@ -640,7 +781,7 @@ describe("CharactersModule.applySuccession", () => {
       province: 2,
       provincePersistentId: 2,
       spouse: "NobleA",
-      spouseProvince: 1,
+      spouseProvincePersistentId: 1,
       children: [{ name: "BHeir", gender: "m" }] // has its own heir - never goes extinct
     };
 
@@ -854,6 +995,49 @@ describe("CharactersModule.applySuccession", () => {
     // territory moved to the new splinter state - area/rural/urban must be refreshed for this era,
     // or the parent state's stats stay inflated and the splinter's stay at 0
     expect(globalThis.window.States.collectStatistics).toHaveBeenCalledTimes(1);
+  });
+
+  it("never hands the capital's own province to the splinter, regardless of the provinces array's order", () => {
+    Math.random = () => 0; // succession triggers, and so does the crisis roll
+
+    const priorRuler = makePriorRuler({
+      children: [
+        { name: "ElderSon", gender: "m" },
+        { name: "YoungerSon", gender: "m" }
+      ]
+    });
+
+    // province array order reflects creation order (e.g. an older province annexed from a
+    // neighbor in a past war), not current ownership - here the capital's own province
+    // ("Homeshire", tied to the capital burg) sits AFTER the other province in the array, the
+    // exact layout that used to make trySplitRealm() hand away the capital by mistake
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1, cell: 1, state: 1 }), makeBurg({ i: 2, cell: 3, state: 1 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Kingdom", capital: 1, lock: true })],
+      guilds: [],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1, burg: 2, name: "Annexedshire", fullName: "Annexedshire County" }),
+        makeProvince({ i: 2, state: 1, burg: 1, name: "Homeshire", fullName: "Homeshire County" })
+      ],
+      characters: [priorRuler],
+      cells: { i: [0, 1, 2, 3], state: [0, 1, 1, 1], province: [0, 2, 1, 1] },
+      cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Monarchy: "agnatic" } }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    const primaryRuler = globalThis.pack.characters!.find((c: any) => c.name === "ElderSon");
+    const splinterRuler = globalThis.pack.characters!.find((c: any) => c.name === "YoungerSon");
+    expect(primaryRuler).toBeDefined();
+    expect(splinterRuler).toBeDefined();
+
+    // the capital's own province, and the capital burg itself, must stay with the primary ruler
+    expect(globalThis.pack.provinces[2].state).toBe(primaryRuler!.state);
+    expect(globalThis.pack.burgs[1].state).toBe(primaryRuler!.state);
+    // the OTHER province is what gets carved off instead
+    expect(globalThis.pack.provinces[1].state).not.toBe(primaryRuler!.state);
+    expect(globalThis.pack.provinces[1].state).toBe(splinterRuler!.state);
   });
 
   it("does not split a realm with fewer than two provinces", () => {

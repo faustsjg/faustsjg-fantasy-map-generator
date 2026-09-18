@@ -9,7 +9,7 @@
 // winnable in the first place.
 import type { Province } from "@/generators/provinces-generator";
 import type { State } from "@/generators/states-generator";
-import { gauss, withAnnotation } from "@/utils";
+import { gauss, withAnnotations } from "@/utils";
 
 // at most a third of the loser's bordering provinces change hands per era - conquering a state
 // takes several eras of sustained war, not one lucky roll
@@ -21,6 +21,11 @@ class WarsModule {
   resolveCampaigns(): void {
     const provinceAdjacency = this.buildProvinceAdjacency();
     let anyChange = false;
+    // one attacker can fully absorb more than one defender in the same era (several campaigns
+    // resolving at once) - collected here and applied as a single combined annotation per
+    // attacker at the end, so every absorption this era survives instead of only the last
+    // (withAnnotations() itself only ever keeps one trailing group, replacing any earlier one)
+    const absorbedNamesByAttacker = new Map<number, string[]>();
 
     for (const attacker of pack.states) {
       if (!attacker.i || attacker.removed) continue;
@@ -33,27 +38,45 @@ class WarsModule {
         const defender = pack.states[campaign.defender];
         if (!defender?.i || defender.removed) continue;
 
-        if (this.annex(attacker, defender, provinceAdjacency)) anyChange = true;
+        const { changed, absorbedName } = this.annex(attacker, defender, provinceAdjacency);
+        if (changed) anyChange = true;
+        if (absorbedName) {
+          const names = absorbedNamesByAttacker.get(attacker.i) ?? [];
+          names.push(absorbedName);
+          absorbedNamesByAttacker.set(attacker.i, names);
+        }
       }
+    }
+
+    for (const [attackerId, absorbedNames] of absorbedNamesByAttacker) {
+      const attacker = pack.states[attackerId];
+      attacker.fullName = withAnnotations(
+        attacker.fullName ?? attacker.name,
+        absorbedNames.map(name => `absorbed ${name}`)
+      );
     }
 
     if (anyChange) window.States.collectStatistics(); // refresh area/burgs/rural/urban after territory moved
   }
 
-  private annex(attacker: State, defender: State, provinceAdjacency: Map<number, Set<number>>): boolean {
+  private annex(
+    attacker: State,
+    defender: State,
+    provinceAdjacency: Map<number, Set<number>>
+  ): { changed: boolean; absorbedName?: string } {
     const attackerPower = (attacker.area ?? 0) * attacker.expansionism;
     const defenderPower = (defender.area ?? 0) * defender.expansionism;
     // same margin generateDiplomacy() requires before it even declares the war - a war Azgaar
     // thought was winnable stays winnable here, no separate threshold to keep in sync
-    if (attackerPower < defenderPower * gauss(1.6, 0.8, 0, 10, 2)) return false;
+    if (attackerPower < defenderPower * gauss(1.6, 0.8, 0, 10, 2)) return { changed: false };
 
     const defenderProvinces = (pack.provinces ?? []).filter(p => p.i && !p.removed && p.state === defender.i);
-    if (!defenderProvinces.length) return false;
+    if (!defenderProvinces.length) return { changed: false };
 
     const border = defenderProvinces.filter(p =>
       [...(provinceAdjacency.get(p.i) ?? [])].some(neighborId => pack.provinces?.[neighborId]?.state === attacker.i)
     );
-    if (!border.length) return false; // no shared border - a naval or coalition war, nothing to take on land
+    if (!border.length) return { changed: false }; // no shared border - a naval or coalition war, nothing to take on land
 
     const takeCount = Math.max(1, Math.ceil(border.length * ANNEXATION_SHARE));
     for (const province of border.slice(0, takeCount)) this.transferProvince(province, attacker);
@@ -81,10 +104,10 @@ class WarsModule {
         }
       }
       defender.removed = true;
-      attacker.fullName = withAnnotation(attacker.fullName ?? attacker.name, `absorbed ${defender.name}`);
+      return { changed: true, absorbedName: defender.name };
     }
 
-    return true;
+    return { changed: true };
   }
 
   private transferProvince(province: Province, to: State): void {

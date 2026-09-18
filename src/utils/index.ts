@@ -37,7 +37,8 @@ import {
   safeParseJSON,
   sanitizeId,
   splitInTwo,
-  withAnnotation
+  withAnnotation,
+  withAnnotations
 } from "./stringUtils";
 import {
   convertTemperature,
@@ -212,5 +213,6 @@ export {
   unique,
   uploadFile,
   wiki,
-  withAnnotation
+  withAnnotation,
+  withAnnotations
 };

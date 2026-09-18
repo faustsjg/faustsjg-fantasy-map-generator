@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { round, sanitizeId, withAnnotation } from "./stringUtils";
+import { round, sanitizeId, withAnnotation, withAnnotations } from "./stringUtils";
 
 describe("round", () => {
   it("should be able to handle undefined input", () => {
@@ -36,5 +36,21 @@ describe("withAnnotation", () => {
     expect(withAnnotation("Kingdom of X (rebelled against Y) (absorbed Z)", "absorbed W")).toBe(
       "Kingdom of X (absorbed W)"
     );
+  });
+});
+
+describe("withAnnotations", () => {
+  it("joins several annotations from the same round into one trailing group", () => {
+    expect(withAnnotations("Kingdom of X", ["absorbed Y", "absorbed Z"])).toBe("Kingdom of X (absorbed Y, absorbed Z)");
+  });
+
+  it("still replaces any earlier annotation(s) rather than stacking onto them", () => {
+    expect(withAnnotations("Kingdom of X (absorbed Y)", ["absorbed Z", "absorbed W"])).toBe(
+      "Kingdom of X (absorbed Z, absorbed W)"
+    );
+  });
+
+  it("strips any trailing annotation and adds none, when passed an empty list", () => {
+    expect(withAnnotations("Kingdom of X (absorbed Y)", [])).toBe("Kingdom of X");
   });
 });

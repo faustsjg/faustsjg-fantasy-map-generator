@@ -2,6 +2,7 @@ import { mean, sum } from "d3";
 import type { Character } from "@/generators/characters-generator";
 import { Characters } from "@/generators/characters-generator";
 import { getMilitaryRatio, getTroopsPerArea } from "@/generators/military-generator";
+import type { Province } from "@/generators/provinces-generator";
 import { Rebellions } from "@/generators/rebellions-generator";
 import type { State } from "@/generators/states-generator";
 import { mutateName } from "@/generators/toponym-drift";
@@ -16,6 +17,12 @@ export interface Era {
   year: number;
   states: State[];
   cellsState: number[];
+  // States.regenerate() rebuilds provinces (Provinces.regenerate(false)) alongside states every
+  // era, so a province layout belongs to its own era just as much as cellsState does - without
+  // capturing it too, scrubbing to an old era would draw the "provinces" map layer from whatever
+  // province data happens to be live (the last-generated era's), not the era actually selected
+  provinces: Province[];
+  cellsProvince: number[];
   characters: Character[];
 }
 
@@ -44,6 +51,12 @@ class ErasModule {
 
     for (let n = 1; n < eraCount; n++) {
       options.year += yearsPerEra;
+      // applySuccession() mutates pack.states/pack.burgs in place (locks, name drift, small-burg
+      // removal) before States.regenerate() is even called - saved here so that if regenerate()
+      // then aborts (see below) those mutations can be undone along with options.year, leaving no
+      // trace of an era that never actually happened
+      const statesBeforeSuccession = structuredClone(pack.states);
+      const burgsBeforeSuccession = structuredClone(pack.burgs);
       this.applySuccession();
 
       // States.recreate() refuses to run (and leaves pack.states/pack.cells.state completely
@@ -55,6 +68,8 @@ class ErasModule {
       const { error } = window.States.regenerate() ?? {};
       if (error) {
         options.year -= yearsPerEra;
+        pack.states = statesBeforeSuccession;
+        pack.burgs = burgsBeforeSuccession;
         break;
       }
 
@@ -74,6 +89,8 @@ class ErasModule {
       year,
       states: structuredClone(pack.states),
       cellsState: Array.from(pack.cells.state),
+      provinces: structuredClone(pack.provinces ?? []),
+      cellsProvince: Array.from(pack.cells.province ?? []),
       characters: structuredClone(pack.characters ?? [])
     };
   }

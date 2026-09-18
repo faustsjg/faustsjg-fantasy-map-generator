@@ -3,7 +3,7 @@
 // Titles, dynasties and family ties are all derived procedurally from the existing state/province
 // data (form, diplomacy) - nothing here is AI-generated.
 import { getNextPersistentId } from "@/generators/persistent-id";
-import { getRandomColor, minmax, P, ra, rand, rw, withAnnotation } from "@/utils";
+import { getRandomColor, minmax, P, ra, rand, rw, withAnnotations } from "@/utils";
 import type { Burg } from "./burgs-generator";
 import type { Province } from "./provinces-generator";
 import type { State } from "./states-generator";
@@ -31,8 +31,12 @@ export interface Character {
   // state/province as last era" regardless of what its .i happens to be renumbered to
   statePersistentId?: number;
   provincePersistentId?: number;
-  spouseState?: number; // for a ruler married into another crown: that state's i
-  spouseProvince?: number; // for a noble married into another county: that province's i
+  // same reasoning as statePersistentId/provincePersistentId above: a marriage/county-alliance
+  // tie can outlive several eras of renumbering before it's actually resolved (the ruler has to
+  // die childless first) - storing the spouse's raw state.i/province.i at the moment of marriage
+  // would silently point at a different state/province by the time the merge actually runs
+  spouseStatePersistentId?: number; // for a ruler married into another crown: that state's persistentId
+  spouseProvincePersistentId?: number; // for a noble married into another county: that province's persistentId
   age?: number; // in years; drives succession together with the culture's lifespan
   removed?: boolean;
 }
@@ -312,9 +316,25 @@ class CharactersModule {
     }
     this.linkStateLieges(characters, rulerByState);
 
-    // a childless ruler married into another crown doesn't end their line - the crowns merge
+    // a childless ruler married into another crown doesn't end their line - the crowns merge.
+    // one survivor can absorb more than one extinct crown in the same era, so every merge's name
+    // is collected and applied as a single combined annotation per survivor at the end, instead of
+    // each call overwriting the previous one's (withAnnotations() only ever keeps one trailing group)
+    const mergedCrownNamesBySurvivor = new Map<number, string[]>();
     for (const { state, prior } of extinctions) {
-      if (this.resolveMarriageMerge(state, prior, characters, rulerByState)) territoryChanged = true;
+      const merge = this.resolveMarriageMerge(state, prior, characters, rulerByState);
+      if (!merge) continue;
+      territoryChanged = true;
+      const names = mergedCrownNamesBySurvivor.get(merge.survivor.i) ?? [];
+      names.push(merge.absorbedName);
+      mergedCrownNamesBySurvivor.set(merge.survivor.i, names);
+    }
+    for (const [survivorStateId, absorbedNames] of mergedCrownNamesBySurvivor) {
+      const survivor = pack.states[survivorStateId];
+      survivor.fullName = withAnnotations(
+        survivor.fullName ?? survivor.name,
+        absorbedNames.map(name => `united with ${name}`)
+      );
     }
     if (territoryChanged) window.States.collectStatistics(); // refresh area/burgs/rural/urban after territory moved
 
@@ -353,9 +373,23 @@ class CharactersModule {
       if (liegeIndex !== undefined) characters[index].liege = liegeIndex;
     }
 
-    // a childless noble married into a neighboring county doesn't end their line - the counties merge
+    // a childless noble married into a neighboring county doesn't end their line - the counties
+    // merge, same "combine same-era merges into one annotation" reasoning as the crown merge above
+    const mergedCountyNamesBySurvivor = new Map<number, string[]>();
     for (const { province, prior, originalName } of provinceExtinctions) {
-      this.resolveCountyMerge(province, prior, originalName, characters, nobleByProvince);
+      const merge = this.resolveCountyMerge(province, prior, originalName, characters, nobleByProvince);
+      if (!merge) continue;
+      const names = mergedCountyNamesBySurvivor.get(merge.survivor.i) ?? [];
+      names.push(merge.absorbedName);
+      mergedCountyNamesBySurvivor.set(merge.survivor.i, names);
+    }
+    for (const [survivorProvinceId, absorbedNames] of mergedCountyNamesBySurvivor) {
+      const survivor = pack.provinces?.[survivorProvinceId];
+      if (!survivor) continue;
+      survivor.fullName = withAnnotations(
+        survivor.fullName ?? survivor.name,
+        absorbedNames.map(name => `united with ${name}`)
+      );
     }
 
     this.addGuildMastersAndCommoners(characters);
@@ -407,12 +441,12 @@ class CharactersModule {
 
     const partnerIndex = ra(candidates);
     const partner = characters[partnerIndex];
-    if (!partner || partner.spouseState !== undefined) return;
+    if (!partner || partner.spouseStatePersistentId !== undefined) return;
 
     ruler.spouse = partner.name;
-    ruler.spouseState = partner.state;
+    ruler.spouseStatePersistentId = partner.statePersistentId;
     partner.spouse = ruler.name;
-    partner.spouseState = ruler.state;
+    partner.spouseStatePersistentId = ruler.statePersistentId;
   }
 
   // a childless ruler married into another crown: their realm doesn't pass to a stranger, it
@@ -423,14 +457,17 @@ class CharactersModule {
     prior: Character,
     characters: Character[],
     rulerByState: Map<number, number>
-  ): boolean {
-    if (prior.spouseState === undefined) return false;
+  ): { survivor: State; absorbedName: string } | null {
+    if (prior.spouseStatePersistentId === undefined) return null;
 
-    const survivor = pack.states[prior.spouseState];
-    if (!survivor || !survivor.i || survivor.removed || survivor.i === state.i) return false;
+    // matched by persistentId, not the raw state.i the marriage tie was formed with - that .i may
+    // have been renumbered one or more eras ago, while this ruler kept ruling unchanged (a marriage
+    // isn't resolved until the ruler actually dies childless, which can take several eras)
+    const survivor = pack.states.find(s => s.persistentId === prior.spouseStatePersistentId);
+    if (!survivor || !survivor.i || survivor.removed || survivor.i === state.i) return null;
 
     const survivorRulerIndex = rulerByState.get(survivor.i);
-    if (survivorRulerIndex === undefined) return false;
+    if (survivorRulerIndex === undefined) return null;
 
     const absorbedRulerIndex = rulerByState.get(state.i);
     if (absorbedRulerIndex !== undefined) {
@@ -462,9 +499,8 @@ class CharactersModule {
     }
 
     state.removed = true;
-    survivor.fullName = withAnnotation(survivor.fullName ?? survivor.name, `united with ${state.name}`);
     characters[survivorRulerIndex].role = `${characters[survivorRulerIndex].role}, uniting the crown of ${state.name}`;
-    return true;
+    return { survivor, absorbedName: state.name };
   }
 
   // the inverse of a merge: carves roughly half of the realm's provinces into a brand new state
@@ -482,7 +518,17 @@ class CharactersModule {
     );
     if (provinces.length < 2) return false;
 
-    const splinterProvinces = provinces.slice(Math.max(1, Math.floor(provinces.length / 2)));
+    // the capital's own province must never end up in the splinter - array position reflects
+    // when each province was first created (its state's own original generation pass), not who
+    // currently rules it, so after any war annexation an older, lower-indexed conquered province
+    // can sort before this state's own (newer, higher-indexed) capital province in this filter
+    const capitalBurg = pack.burgs[state.capital];
+    const capitalProvinceId = capitalBurg ? pack.cells.province?.[capitalBurg.cell] : undefined;
+    const splinterableProvinces = provinces.filter(province => province.i !== capitalProvinceId);
+    if (!splinterableProvinces.length) return false; // nothing to give away besides the capital itself
+
+    const takeCount = Math.min(splinterableProvinces.length, Math.max(1, Math.floor(provinces.length / 2)));
+    const splinterProvinces = splinterableProvinces.slice(splinterableProvinces.length - takeCount);
     const seatProvince = splinterProvinces[0];
     const seatBurg = pack.burgs[seatProvince.burg];
     if (!seatBurg || !seatBurg.i || seatBurg.removed) return false;
@@ -584,12 +630,12 @@ class CharactersModule {
 
     const partnerIndex = ra(candidates);
     const partner = characters[partnerIndex];
-    if (!partner || partner.spouseProvince !== undefined) return;
+    if (!partner || partner.spouseProvincePersistentId !== undefined) return;
 
     noble.spouse = partner.name;
-    noble.spouseProvince = partner.province;
+    noble.spouseProvincePersistentId = partner.provincePersistentId;
     partner.spouse = noble.name;
-    partner.spouseProvince = noble.province;
+    partner.spouseProvincePersistentId = noble.provincePersistentId;
   }
 
   // a childless noble married into a neighboring county: their land merges into their spouse's,
@@ -600,15 +646,17 @@ class CharactersModule {
     originalName: string,
     characters: Character[],
     nobleByProvince: Map<number, number>
-  ): void {
-    if (prior.spouseProvince === undefined) return;
+  ): { survivor: Province; absorbedName: string } | null {
+    if (prior.spouseProvincePersistentId === undefined) return null;
 
-    const survivor = pack.provinces?.[prior.spouseProvince];
-    if (!survivor || !survivor.i || survivor.removed || survivor.i === province.i) return;
-    if (survivor.state !== province.state) return; // safety net; shouldn't happen by construction
+    // matched by persistentId, not the raw province.i the marriage tie was formed with - see the
+    // identical reasoning on resolveMarriageMerge's own persistentId lookup above
+    const survivor = pack.provinces?.find(p => p.persistentId === prior.spouseProvincePersistentId);
+    if (!survivor || !survivor.i || survivor.removed || survivor.i === province.i) return null;
+    if (survivor.state !== province.state) return null; // safety net; shouldn't happen by construction
 
     const survivorNobleIndex = nobleByProvince.get(survivor.i);
-    if (survivorNobleIndex === undefined) return;
+    if (survivorNobleIndex === undefined) return null;
 
     const absorbedNobleIndex = nobleByProvince.get(province.i);
     if (absorbedNobleIndex !== undefined) {
@@ -621,9 +669,9 @@ class CharactersModule {
     }
 
     province.removed = true;
-    survivor.fullName = withAnnotation(survivor.fullName ?? survivor.name, `united with ${originalName}`);
     characters[survivorNobleIndex].role =
       `${characters[survivorNobleIndex].role}, uniting the county of ${originalName}`;
+    return { survivor, absorbedName: originalName };
   }
 
   private createRuler(index: number, state: State, capital: Burg): Character {

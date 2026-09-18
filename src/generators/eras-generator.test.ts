@@ -99,6 +99,26 @@ describe("ErasModule.generate", () => {
     expect(globalThis.pack.eras).toBe(eras);
   });
 
+  it("snapshots pack.provinces/cells.province per era, not just states/cellsState", () => {
+    globalThis.pack.provinces = [0, { i: 1, name: "Homeshire" }] as any;
+    globalThis.pack.cells.province = [0, 1, 1, 1] as any;
+
+    // States.regenerate() also rebuilds provinces every era it succeeds (Provinces.regenerate) -
+    // simulate that side effect so the snapshot has something new to actually capture
+    regenerate.mockImplementation(() => {
+      globalThis.pack.provinces = [0, { i: 1, name: "Splitshire" }, { i: 2, name: "Homeshire" }] as any;
+      globalThis.pack.cells.province = [0, 1, 1, 2] as any;
+      return {};
+    });
+
+    const eras = ErasModule.generate(2, 100);
+
+    expect(eras[0].provinces).toEqual([0, { i: 1, name: "Homeshire" }]);
+    expect(eras[0].cellsProvince).toEqual([0, 1, 1, 1]);
+    expect(eras[1].provinces).toEqual([0, { i: 1, name: "Splitshire" }, { i: 2, name: "Homeshire" }]);
+    expect(eras[1].cellsProvince).toEqual([0, 1, 1, 2]);
+  });
+
   it("advances the year and calls States.regenerate once per extra era", () => {
     const eras = ErasModule.generate(3, 50);
     expect(eras.map((e: any) => e.year)).toEqual([1000, 1050, 1100]);
@@ -124,6 +144,20 @@ describe("ErasModule.generate", () => {
     expect(globalThis.options.year).toBe(1050);
     // the failed era never regenerated, so nothing downstream should run for it either
     expect(applySuccession).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back applySuccession()'s in-place state/burg mutations when regenerate() aborts, leaving no trace of an era that never happened", () => {
+    regenerate.mockReturnValueOnce({ error: "Unable to regenerate as all states are locked" });
+
+    const eras = ErasModule.generate(2, 50);
+
+    expect(eras).toHaveLength(1); // only the initial snapshot - the one attempted era never completed
+    expect(globalThis.options.year).toBe(1000);
+    // applySuccession() locked both states and removed the small non-capital burg before
+    // regenerate() ever ran and aborted - all of that must be undone, not left dangling
+    expect(globalThis.pack.states[1].lock).toBeUndefined();
+    expect(globalThis.pack.states[2].lock).toBeUndefined();
+    expect(globalThis.pack.burgs[2].removed).toBeUndefined();
   });
 
   it("locks every state when P() always succeeds, so all survive into the next era", () => {

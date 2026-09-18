@@ -122,20 +122,33 @@ export const sanitizeId = (inputString: string) => {
 };
 
 /**
- * Append a "(...)" annotation to a name, replacing any trailing annotation(s) already there
- * instead of piling the new one on top - so a name that keeps picking up one-off historical
- * notes (a conquest, a dynastic union...) over many repeated events never grows unbounded.
+ * Append one or more "(...)" annotations to a name, replacing any trailing annotation(s) already
+ * there instead of piling the new ones on top - so a name that keeps picking up one-off
+ * historical notes (a conquest, a dynastic union...) over many repeated events never grows
+ * unbounded. Pass every annotation earned in the same event/pass (e.g. a state that absorbs two
+ * neighbors in one era) together in one call, so all of them survive instead of only the last.
+ * @param {string} name - The base name, possibly already carrying trailing "(...)" annotation(s)
+ * @param {string[]} annotations - This round's annotations' inner text, without parentheses
+ * @returns {string} - The name with exactly one trailing "(...)", comma-joining multiple annotations
+ *
+ * @example
+ * withAnnotations("Kingdom of X (absorbed Y)", ["absorbed Z"]) // "Kingdom of X (absorbed Z)"
+ * withAnnotations("Kingdom of X", ["absorbed Y", "absorbed Z"]) // "Kingdom of X (absorbed Y, absorbed Z)"
+ */
+export const withAnnotations = (name: string, annotations: string[]): string => {
+  const baseName = name.replace(/(\s*\([^()]*\))+$/, "");
+  if (!annotations.length) return baseName;
+  return `${baseName} (${annotations.join(", ")})`;
+};
+
+/**
+ * Single-annotation convenience wrapper around withAnnotations() - see there for the accumulation
+ * behavior this replaces any earlier trailing annotation with.
  * @param {string} name - The base name, possibly already carrying trailing "(...)" annotation(s)
  * @param {string} annotation - The new annotation's inner text, without parentheses
  * @returns {string} - The name with exactly one trailing "(annotation)"
- *
- * @example
- * withAnnotation("Kingdom of X (absorbed Y)", "absorbed Z") // "Kingdom of X (absorbed Z)"
  */
-export const withAnnotation = (name: string, annotation: string): string => {
-  const baseName = name.replace(/(\s*\([^()]*\))+$/, "");
-  return `${baseName} (${annotation})`;
-};
+export const withAnnotation = (name: string, annotation: string): string => withAnnotations(name, [annotation]);
 
 declare global {
   interface Window {

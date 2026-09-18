@@ -122,6 +122,43 @@ describe("WarsModule.resolveCampaigns", () => {
     expect(attacker.fullName).toBe("Bigland (absorbed Smallland)");
   });
 
+  it("combines every defender fully absorbed in the same resolveCampaigns() call into one annotation", () => {
+    const attacker = makeState({
+      i: 1,
+      campaigns: [
+        { name: "War1", start: 1000, attacker: 1, defender: 2 },
+        { name: "War2", start: 1000, attacker: 1, defender: 3 }
+      ]
+    });
+    const defender2 = makeState({ i: 2, name: "Smallland", area: 5, expansionism: 1, capital: 2, campaigns: [] });
+    const defender3 = makeState({ i: 3, name: "Tinyland", area: 5, expansionism: 1, capital: 3, campaigns: [] });
+
+    globalThis.pack = {
+      states: [0 as any, attacker, defender2, defender3],
+      burgs: [
+        0 as any,
+        { i: 1, cell: 1, state: 1 },
+        { i: 2, cell: 2, state: 2 },
+        { i: 3, cell: 3, state: 3 }
+      ],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1 }),
+        makeProvince({ i: 2, state: 2 }),
+        makeProvince({ i: 3, state: 3 })
+      ],
+      cells: { i: [0, 1, 2, 3], c: [[], [2, 3], [1], [1]], state: [0, 1, 2, 3], province: [0, 1, 2, 3] }
+    } as any;
+
+    Wars.resolveCampaigns();
+
+    expect(defender2.removed).toBe(true);
+    expect(defender3.removed).toBe(true);
+    // both absorptions happened in this one call - neither should be lost to the other overwriting it
+    expect(attacker.fullName).toBe("Bigland (absorbed Smallland, absorbed Tinyland)");
+    expect(collectStatistics).toHaveBeenCalledTimes(1);
+  });
+
   it("does not take territory when the attacker isn't decisively stronger", () => {
     (gauss as any).mockReturnValue(10); // max threshold: attacker would need to be 10x the defender's power
 
