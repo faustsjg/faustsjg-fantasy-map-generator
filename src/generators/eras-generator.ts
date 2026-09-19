@@ -1,4 +1,5 @@
 import { mean, sum } from "d3";
+import type { Burg } from "@/generators/burgs-generator";
 import type { Character } from "@/generators/characters-generator";
 import { Characters } from "@/generators/characters-generator";
 import { getMilitaryRatio, getTroopsPerArea } from "@/generators/military-generator";
@@ -23,6 +24,11 @@ export interface Era {
   // province data happens to be live (the last-generated era's), not the era actually selected
   provinces: Province[];
   cellsProvince: number[];
+  // burgs get pruned (small non-capital settlements), renamed (toponym drift) and reassigned as
+  // capitals (a splinter/rebel state's seat) in place every era, exactly like states/provinces -
+  // without capturing them too, an old era's burg icons/names/capital flags would stay whatever
+  // the last-generated era left them as
+  burgs: Burg[];
   characters: Character[];
 }
 
@@ -91,6 +97,7 @@ class ErasModule {
       cellsState: Array.from(pack.cells.state),
       provinces: structuredClone(pack.provinces ?? []),
       cellsProvince: Array.from(pack.cells.province ?? []),
+      burgs: structuredClone(pack.burgs),
       characters: structuredClone(pack.characters ?? [])
     };
   }

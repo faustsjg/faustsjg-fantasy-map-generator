@@ -293,6 +293,7 @@ class ProvinceModule {
 
         provinces.push({
           i: provinceId,
+          persistentId: getNextPersistentId(),
           state: s.i,
           center,
           burg,

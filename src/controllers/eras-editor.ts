@@ -230,10 +230,10 @@ function setPlayPauseIcon(isPlaying: boolean): void {
 
 // Apply one era's political snapshot to the live map and redraw. Geography
 // (heights, rivers, biomes...) is untouched; only what expandStates() itself
-// writes - states, provinces and their cell ownership - plus pack.characters,
-// is restored, so this is the exact inverse of taking the snapshot. Skipping
-// provinces would leave the "provinces" layer drawing whatever era was
-// generated last; skipping characters would do the same to Dynasty Overview.
+// writes - states, provinces, burgs and their cell ownership - plus
+// pack.characters, is restored, so this is the exact inverse of taking the
+// snapshot. Skipping any one of these would leave that layer/panel drawing
+// whatever era was generated last instead of the one actually selected.
 // `highlight` flashes territory whose controlling state was born or died since the map's current
 // state - skipped on the dialog's own opening render, where "since" isn't meaningful yet.
 function selectEra(index: number, highlight = false): void {
@@ -247,12 +247,8 @@ function selectEra(index: number, highlight = false): void {
   pack.cells.state = Uint16Array.from(era.cellsState);
   pack.provinces = structuredClone(era.provinces);
   pack.cells.province = Uint16Array.from(era.cellsProvince);
+  pack.burgs = structuredClone(era.burgs);
   pack.characters = structuredClone(era.characters);
-
-  for (const burg of pack.burgs) {
-    if (!burg.i || burg.removed) continue;
-    burg.state = pack.cells.state[burg.cell];
-  }
 
   unfog();
   Layers.draw("states", "borders", "provinces", "labels", "burgIcons", "military", "goods", "emblems");

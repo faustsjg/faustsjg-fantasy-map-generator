@@ -119,6 +119,18 @@ describe("ErasModule.generate", () => {
     expect(eras[1].cellsProvince).toEqual([0, 1, 1, 2]);
   });
 
+  it("snapshots pack.burgs per era, capturing this era's own pruning/renaming/capital changes", () => {
+    // era 1's applySuccession() prunes burg 2 (population 1, non-capital, P(0.15) forced true) and
+    // drifts names - the snapshot must reflect burg 2 as still present (unpruned) in era 0, and
+    // removed in era 1, not whatever pack.burgs ends up looking like after every era has run
+    const eras = ErasModule.generate(2, 100);
+
+    expect(eras[0].burgs.find((b: any) => b.i === 2)?.removed).toBeFalsy();
+    expect(eras[1].burgs.find((b: any) => b.i === 2)?.removed).toBe(true);
+    // the live pack.burgs array is the same one that was cloned into era 1, not a shared reference
+    expect(eras[1].burgs).not.toBe(globalThis.pack.burgs);
+  });
+
   it("advances the year and calls States.regenerate once per extra era", () => {
     const eras = ErasModule.generate(3, 50);
     expect(eras.map((e: any) => e.year)).toEqual([1000, 1050, 1100]);
