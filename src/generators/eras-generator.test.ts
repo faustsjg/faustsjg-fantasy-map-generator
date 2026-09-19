@@ -67,11 +67,7 @@ describe("ErasModule.generate", () => {
         { i: 1, name: "Big", area: 90, culture: 0 },
         { i: 2, name: "Small", area: 10, culture: 0 }
       ],
-      burgs: [
-        { i: 0 },
-        { i: 1, capital: 1, population: 20, cell: 1 },
-        { i: 2, capital: 0, population: 1, cell: 3 }
-      ],
+      burgs: [{ i: 0 }, { i: 1, capital: 1, population: 20, cell: 1 }, { i: 2, capital: 0, population: 1, cell: 3 }],
       cells: { state: [0, 1, 1, 2], burg: [0, 1, 0, 2] }
     } as any;
 
