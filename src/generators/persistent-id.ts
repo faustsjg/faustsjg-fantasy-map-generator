@@ -12,3 +12,27 @@ export function getNextPersistentId(): number {
   pack.nextPersistentId = (pack.nextPersistentId ?? 0) + 1;
   return pack.nextPersistentId;
 }
+
+// pack.nextPersistentId itself isn't part of the .map save format (only each entity's own
+// persistentId is - see save.ts/load.ts) and Pack.generate() resets pack to a fresh object on
+// load, so after loading a save this counter would otherwise start back at 0 and immediately
+// hand out ids that collide with ones the loaded map (including every historical Era snapshot)
+// already has in use. Call this once right after states/provinces/eras are loaded to recompute it
+// from whatever's the highest persistentId actually present anywhere in the loaded data.
+export function recomputeNextPersistentId(): void {
+  let max = 0;
+  const scan = (entities: { persistentId?: number }[] | undefined) => {
+    for (const entity of entities ?? []) {
+      if (entity?.persistentId !== undefined && entity.persistentId > max) max = entity.persistentId;
+    }
+  };
+
+  scan(pack.states);
+  scan(pack.provinces);
+  for (const era of pack.eras ?? []) {
+    scan(era.states);
+    scan(era.provinces);
+  }
+
+  pack.nextPersistentId = max;
+}

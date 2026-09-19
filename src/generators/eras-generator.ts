@@ -133,6 +133,11 @@ class ErasModule {
 
       if (!burg.capital && (burg.population ?? 0) < 3 && P(0.15)) {
         burg.removed = true;
+        // cells.burg is the source of truth other systems (province generation's "do not
+        // overwrite burgs" check, load.ts's own data-integrity pass) read as "is there a burg
+        // here" - burgs-generator.ts/burg-editor.ts's own removal paths clear it the same way,
+        // leaving it pointing at a removed burg would silently misinform every one of them
+        pack.cells.burg[burg.cell] = 0;
         continue;
       }
 

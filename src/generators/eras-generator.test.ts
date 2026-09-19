@@ -67,8 +67,12 @@ describe("ErasModule.generate", () => {
         { i: 1, name: "Big", area: 90, culture: 0 },
         { i: 2, name: "Small", area: 10, culture: 0 }
       ],
-      burgs: [{ i: 0 }, { i: 1, capital: 1, population: 20 }, { i: 2, capital: 0, population: 1 }],
-      cells: { state: [0, 1, 1, 2] }
+      burgs: [
+        { i: 0 },
+        { i: 1, capital: 1, population: 20, cell: 1 },
+        { i: 2, capital: 0, population: 1, cell: 3 }
+      ],
+      cells: { state: [0, 1, 1, 2], burg: [0, 1, 0, 2] }
     } as any;
 
     await import("./eras-generator");
@@ -185,6 +189,17 @@ describe("ErasModule.generate", () => {
     ErasModule.generate(2, 100);
     const capital = globalThis.pack.burgs.find((b: any) => b.capital);
     expect(capital?.removed).toBeUndefined();
+  });
+
+  it("clears cells.burg for a pruned burg's cell, not just burg.removed", () => {
+    // burg 2 (population 1, non-capital) is the one P(0.15) forced true prunes; its cell (3) must
+    // stop pointing at it, or other systems reading cells.burg as "is there a burg here" (province
+    // generation's own burg check, load.ts's data-integrity pass) would treat it as still standing
+    ErasModule.generate(2, 100);
+    expect(globalThis.pack.burgs[2].removed).toBe(true);
+    expect(globalThis.pack.cells.burg[3]).toBe(0);
+    // the surviving capital's own cell must be untouched
+    expect(globalThis.pack.cells.burg[1]).toBe(1);
   });
 
   it("mutates a surviving state's name and keeps fullName in sync, when P() always succeeds", () => {

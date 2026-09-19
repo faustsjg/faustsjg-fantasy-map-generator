@@ -6,6 +6,7 @@ import { applyDefaultViewboxEvents } from "@/components/viewbox-events";
 import { Characters } from "@/generators/characters-generator";
 import { GraphOverride } from "@/generators/graph-override";
 import { Guilds } from "@/generators/guilds-generator";
+import { recomputeNextPersistentId } from "@/generators/persistent-id";
 import { invalidateEmblems } from "@/renderers/draw-emblems";
 import { clearLegend } from "@/renderers/draw-legend";
 import { Services } from "@/services";
@@ -410,6 +411,11 @@ async function parseLoadedData(data: string[], mapVersion: string | null): Promi
     pack.relief = data[49] ? JSON.parse(data[49]) : [];
     pack.eras = data[52] ? JSON.parse(data[52]) : [];
     pack.aiTerrainEdits = data[53] ? JSON.parse(data[53]) : [];
+    // states/provinces/eras just loaded above already carry their own persistentId values, but the
+    // counter behind getNextPersistentId() itself isn't part of the save format and was just reset
+    // to undefined by Pack.generate() - recompute it now, or the next state/province created this
+    // session would collide with one already present in the loaded map
+    recomputeNextPersistentId();
     Guilds.generate(); // derived from burg production, not stored in the save format
     Characters.generate(); // derived from states/guilds/burgs, not stored in the save format
 
