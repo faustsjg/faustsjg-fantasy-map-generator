@@ -1,5 +1,5 @@
 import { select } from "d3";
-import { closeDialogs } from "@/components/dialog/dialog-helpers";
+import { closeDialogs, confirmationDialog } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
 import { tip } from "@/components/tooltips";
 import { Controllers } from "@/controllers";
@@ -162,10 +162,34 @@ function generate(): void {
   if (!count || count < 1) return void tip("<i>Eras</i> must be at least 1", false, "error");
   if (!years || years < 1) return void tip("<i>Years per era</i> must be at least 1", false, "error");
 
+  // ErasModule.generate() always reads the live map (states/burgs/pop, edits and all - see
+  // selectEra() above) as its own starting point, so if the slider is currently sitting on an
+  // older era rather than the latest one, running it now regenerates forward from THAT era and
+  // throws away every already-generated era after it. That's the intended way to redo history
+  // from a chosen point, but it's also destructive and easy to trigger by accident just by
+  // pressing Generate again without noticing the slider had been moved - so it's confirmed here
+  // rather than run straight away, same as the "wipes every emblem" warning on Regenerate Emblems.
+  const eras = pack.eras;
+  const isRegeneratingFromPast = currentEraIndex !== undefined && !!eras?.length && currentEraIndex < eras.length - 1;
+  if (isRegeneratingFromPast) {
+    const discardedCount = eras!.length - 1 - currentEraIndex!;
+    const fromYear = eras![currentEraIndex!].year;
+    confirmationDialog({
+      title: "Regenerate from this era",
+      message: `This discards the ${discardedCount} era(s) already generated after year ${fromYear} and generates a new future from here instead. Continue?`,
+      confirm: "Regenerate",
+      onConfirm: () => runGenerate(count, years)
+    });
+    return;
+  }
+
+  runGenerate(count, years);
+}
+
+function runGenerate(count: number, years: number): void {
   stopPlayback();
-  // a fresh run replaces pack.eras wholesale (ErasModule.generate() reads the live map, edits and
-  // all, as its own starting point) - any index left over from browsing the previous run no longer
-  // means anything against this new array
+  // a fresh run replaces pack.eras wholesale - any index left over from browsing the previous run
+  // no longer means anything against this new array
   currentEraIndex = undefined;
   window.Eras.generate(count, years);
 
@@ -255,18 +279,22 @@ function setPlayPauseIcon(isPlaying: boolean): void {
 // closed on an old era (which jumps straight to the latest one) - at which point it's gone
 // without a trace, and was never in what gets saved either. Called right before each of those
 // discard points, for whichever era `fromIndex` says the live map currently reflects: any coa that
-// no longer matches what that era's own snapshot has is the edit, written into that era's snapshot
+// no longer matches what that era's own snapshot has is the edit - confirmed once (covering every
+// changed entity at once, not one dialog per entity), then written into that era's own snapshot
 // and forward into every later one (matched by persistentId for states/provinces, since era-to-era
 // renumbering makes .i unusable for that; by .i for burgs, which are only ever pruned in place,
 // never renumbered). Eras before fromIndex are left alone - nothing about the past should change
-// because of an edit made looking at a later point in it.
+// because of an edit made looking at a later point in it. A cancelled confirmation simply leaves
+// the edit uncommitted, the same as if this function had never run at all.
 function commitCoaEditsForward(fromIndex: number): void {
   const eras = pack.eras;
   const fromEra = eras?.[fromIndex];
   if (!eras || !fromEra) return;
   const laterEras = eras.slice(fromIndex);
 
-  const applyIfChanged = <T extends { coa?: Emblem }>(
+  const pendingWrites: Array<() => void> = [];
+
+  const collectChanges = <T extends { coa?: Emblem }>(
     liveEntities: T[],
     getCollection: (era: Era) => T[],
     getKey: (entity: T) => number | string | undefined
@@ -284,28 +312,43 @@ function commitCoaEditsForward(fromIndex: number): void {
       const stored = storedByKey.get(key);
       if (!stored || JSON.stringify(stored.coa) === JSON.stringify(liveEntity.coa)) continue;
 
-      for (const era of laterEras) {
-        const target = getCollection(era).find(entity => getKey(entity) === key);
-        if (target) target.coa = structuredClone(liveEntity.coa);
-      }
+      pendingWrites.push(() => {
+        for (const era of laterEras) {
+          const target = getCollection(era).find(entity => getKey(entity) === key);
+          if (target) target.coa = structuredClone(liveEntity.coa);
+        }
+      });
     }
   };
 
-  applyIfChanged(
+  collectChanges(
     pack.states,
     era => era.states,
     s => s.persistentId
   );
-  applyIfChanged(
+  collectChanges(
     pack.burgs,
     era => era.burgs,
     b => b.i
   );
-  applyIfChanged(
+  collectChanges(
     pack.provinces ?? [],
     era => era.provinces,
     p => p.persistentId
   );
+
+  if (!pendingWrites.length) return;
+
+  const laterCount = laterEras.length - 1;
+  const laterEraNote = laterCount > 0 ? ` and its ${laterCount} later era(s)` : "";
+  confirmationDialog({
+    title: "Apply emblem edit forward",
+    message: `You edited an emblem while looking at year ${fromEra.year}. This will apply from here${laterEraNote} - the eras before it are left as they were. Continue?`,
+    confirm: "Apply",
+    onConfirm: () => {
+      for (const write of pendingWrites) write();
+    }
+  });
 }
 
 // Apply one era's political snapshot to the live map and redraw. Geography
@@ -329,6 +372,12 @@ function selectEra(index: number, highlight = false): void {
   pack.cells.province = Uint16Array.from(era.cellsProvince);
   pack.burgs = structuredClone(era.burgs);
   pack.characters = structuredClone(era.characters);
+  pack.cells.pop = Float32Array.from(era.cellsPop);
+  // the year LABEL below always matched the era shown, but options.year itself (what
+  // ErasModule.generate() actually reads as "now") didn't - clicking Generate while looking at an
+  // older era would silently start the new run from whatever year the last run ended on, not this
+  // era's own year
+  options.year = era.year;
   currentEraIndex = index;
 
   unfog();

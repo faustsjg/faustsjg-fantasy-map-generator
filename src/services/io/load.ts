@@ -424,6 +424,11 @@ async function parseLoadedData(data: string[], mapVersion: string | null): Promi
       era.burgs ??= [];
       era.characters ??= [];
       era.epidemicEvents ??= [];
+      // no historically-accurate value exists for an era saved before rural population was
+      // captured per era - the map's current (just-loaded) population is a far better fallback
+      // than leaving it undefined (Float32Array.from(undefined) throws) or zeroing it out (which
+      // would draw every cell as unpopulated the moment that old era is viewed)
+      era.cellsPop ??= Array.from(pack.cells.pop);
     }
     pack.eras = eras;
     pack.aiTerrainEdits = data[53] ? JSON.parse(data[53]) : [];
