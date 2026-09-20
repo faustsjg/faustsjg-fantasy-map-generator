@@ -8,7 +8,7 @@ import { Rebellions } from "@/generators/rebellions-generator";
 import type { State } from "@/generators/states-generator";
 import { mutateName } from "@/generators/toponym-drift";
 import { Wars } from "@/generators/wars-generator";
-import { minmax, P, rn } from "../utils";
+import { gauss, minmax, P, rn } from "../utils";
 
 declare global {
   var Eras: ErasModule;
@@ -46,12 +46,56 @@ export function survivalChance(stateArea: number, totalArea: number, stateCount:
   return minmax(areaBasedChance + militaryBonus, 0.05, 0.95);
 }
 
+// Pre-industrial population grew roughly 0.1-0.5%/year on average over the long run, with heavy
+// swings (plague, famine, prosperity) and outright decline in bad stretches - rolled once per
+// state per era, then compounded over however many years that era spans.
+const POP_GROWTH_MEAN_PCT = 0.3;
+const POP_GROWTH_SD_PCT = 0.15;
+const POP_GROWTH_MIN_PCT = -0.2;
+const POP_GROWTH_MAX_PCT = 0.8;
+// a province annexed THIS era pays for it in people, not just political unrest - war, pillage and
+// displacement, overriding the state's own growth roll for just that province, just this once
+const WAR_POPULATION_RETENTION_MEAN = 0.8;
+const WAR_POPULATION_RETENTION_SD = 0.08;
+const WAR_POPULATION_RETENTION_MIN = 0.6;
+const WAR_POPULATION_RETENTION_MAX = 0.95;
+// population can't compound forever - each cell/burg is capped at a multiple of whatever
+// population it had when this generate() run started (captured once, see generate() below),
+// standing in for a Malthusian agricultural/urban ceiling
+const CARRYING_CAPACITY_MULTIPLIER = 3;
+
+// Political acceptance of a conqueror (Rebellions' own unrest, which decays over
+// RECENT_ANNEXATION_DECAY_YEARS = 150) and cultural assimilation fade at very different speeds -
+// real conquered regions routinely stayed culturally distinct for centuries after the fighting
+// stopped (Wales, Brittany, Catalonia). Assimilation only starts rolling well past that political
+// window, and even then it's a modest, capped per-era chance - many conquered provinces are meant
+// to never assimilate at all, which is the historically common outcome, not the exception.
+const ASSIMILATION_MIN_YEARS = 300;
+const ASSIMILATION_BASE_CHANCE = 0.08;
+const ASSIMILATION_CHANCE_PER_CENTURY_PAST_MINIMUM = 0.03;
+const ASSIMILATION_MAX_CHANCE = 0.3;
+
 class ErasModule {
   // Generate `eraCount` snapshots of the political layer, `yearsPerEra` years apart.
   // Geography (pack.cells.h/biome/rivers/...) is untouched — only pack.states and
   // pack.cells.state are regenerated each era, inheriting from the previous one.
   generate(eraCount: number, yearsPerEra: number): Era[] {
     if (eraCount < 1) return [];
+
+    // captured once, before any era runs - growPopulation() caps each cell/burg at a multiple of
+    // its population right now, not a value re-derived from Population's own generation formula
+    // (which bakes in a one-time random multiplier growPopulation() has no way to reconstruct, and
+    // would otherwise clip an ordinarily-sized burg's population down on the very first era)
+    const populationCeilingByCell = new Map<number, number>();
+    for (const cellId of pack.cells.i) {
+      if (pack.cells.h[cellId] < 20) continue;
+      populationCeilingByCell.set(cellId, pack.cells.pop[cellId] * CARRYING_CAPACITY_MULTIPLIER);
+    }
+    const populationCeilingByBurg = new Map<number, number>();
+    for (const burg of pack.burgs) {
+      if (!burg.i || burg.removed) continue;
+      populationCeilingByBurg.set(burg.i, (burg.population ?? 0) * CARRYING_CAPACITY_MULTIPLIER);
+    }
 
     const eras: Era[] = [this.snapshot(options.year)];
 
@@ -82,6 +126,9 @@ class ErasModule {
       Wars.resolveCampaigns();
       Rebellions.resolve();
       Characters.applySuccession(yearsPerEra);
+      this.assimilateCultures();
+      this.growPopulation(yearsPerEra, populationCeilingByCell, populationCeilingByBurg);
+      window.States.collectStatistics(); // refresh area/burgs/rural/urban after population changed
       this.updateTreasuries();
       eras.push(this.snapshot(options.year));
     }
@@ -154,6 +201,110 @@ class ErasModule {
       if (!state.i || state.removed) continue;
       const population = (state.rural ?? 0) + (state.urban ?? 0);
       state.treasury = rn(state.pollTax * population, 2);
+    }
+  }
+
+  // A province held by a different-culture crown long enough, and left alone long enough
+  // (annexedYear, the same field Rebellions' own unrest decay reads), has a modest chance each era
+  // to assimilate into the ruling state's culture - never guaranteed, so plenty of conquered
+  // provinces stay distinct indefinitely, matching the historically common outcome. Matched against
+  // the seat burg's own culture, the same proxy rebellions-generator.ts uses for "this province's
+  // culture" - provinces don't carry a culture field of their own, only their cells do.
+  private assimilateCultures(): void {
+    for (const province of pack.provinces ?? []) {
+      if (!province.i || province.removed || province.annexedYear === undefined) continue;
+
+      const state = pack.states[province.state];
+      if (!state?.i || state.removed) continue;
+
+      const seatBurg = pack.burgs[province.burg];
+      if (!seatBurg?.i || seatBurg.removed || seatBurg.culture === state.culture) continue;
+
+      const yearsUnderForeignRule = options.year - province.annexedYear;
+      if (yearsUnderForeignRule < ASSIMILATION_MIN_YEARS) continue;
+
+      const centuriesPastMinimum = (yearsUnderForeignRule - ASSIMILATION_MIN_YEARS) / 100;
+      const chance = minmax(
+        ASSIMILATION_BASE_CHANCE + centuriesPastMinimum * ASSIMILATION_CHANCE_PER_CENTURY_PAST_MINIMUM,
+        0,
+        ASSIMILATION_MAX_CHANCE
+      );
+      if (!P(chance)) continue;
+
+      const originalCulture = seatBurg.culture;
+      seatBurg.culture = state.culture;
+      for (const cellId of pack.cells.i) {
+        if (pack.cells.province?.[cellId] === province.i && pack.cells.culture[cellId] === originalCulture) {
+          pack.cells.culture[cellId] = state.culture;
+        }
+      }
+    }
+  }
+
+  // Population grows (or, for a freshly-conquered province, shrinks) once per era, capped by the
+  // ceilings generate() captured before the run started - rural (cells.pop) and urban
+  // (burg.population) are tracked as the separate figures States.collectStatistics() itself sums
+  // them from, so both need their own growth pass.
+  private growPopulation(
+    yearsPerEra: number,
+    populationCeilingByCell: Map<number, number>,
+    populationCeilingByBurg: Map<number, number>
+  ): void {
+    const growthFactorByState = new Map<number, number>();
+    for (const state of pack.states) {
+      if (!state.i || state.removed) continue;
+      const ratePerYear =
+        gauss(POP_GROWTH_MEAN_PCT, POP_GROWTH_SD_PCT, POP_GROWTH_MIN_PCT, POP_GROWTH_MAX_PCT, 3) / 100;
+      growthFactorByState.set(state.i, (1 + ratePerYear) ** yearsPerEra);
+    }
+
+    const devastatedProvinceIds = new Set(
+      (pack.provinces ?? []).filter(p => p.i && !p.removed && p.annexedYear === options.year).map(p => p.i)
+    );
+    // one shared roll per devastated province, not per cell/burg - the whole province suffers the
+    // same war, not an independently unlucky dice roll on every cell within it
+    const warRetentionByProvince = new Map<number, number>();
+    const getWarRetention = (provinceId: number): number => {
+      let retention = warRetentionByProvince.get(provinceId);
+      if (retention === undefined) {
+        retention = gauss(
+          WAR_POPULATION_RETENTION_MEAN,
+          WAR_POPULATION_RETENTION_SD,
+          WAR_POPULATION_RETENTION_MIN,
+          WAR_POPULATION_RETENTION_MAX,
+          3
+        );
+        warRetentionByProvince.set(provinceId, retention);
+      }
+      return retention;
+    };
+
+    for (const cellId of pack.cells.i) {
+      if (pack.cells.h[cellId] < 20) continue; // no population in water
+
+      const growthFactor = growthFactorByState.get(pack.cells.state[cellId]);
+      if (!growthFactor) continue; // unowned/neutral land - no growth tracked
+
+      const provinceId = pack.cells.province?.[cellId];
+      const factor =
+        provinceId && devastatedProvinceIds.has(provinceId) ? getWarRetention(provinceId) : growthFactor;
+
+      const ceiling = populationCeilingByCell.get(cellId) ?? Infinity;
+      pack.cells.pop[cellId] = Math.min(pack.cells.pop[cellId] * factor, ceiling);
+    }
+
+    for (const burg of pack.burgs) {
+      if (!burg.i || burg.removed) continue;
+
+      const growthFactor = growthFactorByState.get(burg.state ?? 0);
+      if (!growthFactor) continue;
+
+      const provinceId = pack.cells.province?.[burg.cell];
+      const factor =
+        provinceId && devastatedProvinceIds.has(provinceId) ? getWarRetention(provinceId) : growthFactor;
+
+      const ceiling = populationCeilingByBurg.get(burg.i) ?? Infinity;
+      burg.population = rn(Math.min((burg.population ?? 0) * factor, ceiling), 3);
     }
   }
 }

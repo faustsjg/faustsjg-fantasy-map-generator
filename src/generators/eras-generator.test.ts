@@ -8,6 +8,16 @@ vi.mock("./characters-generator", () => ({
   Characters: { applySuccession: vi.fn() }
 }));
 
+// gauss() is backed by d3's randomNormal, which uses rejection sampling internally - with
+// Math.random forced to a constant below (the usual trick to make every P() call deterministic),
+// that sampling spins forever instead of terminating. Stub it to just return its own "expected"
+// (mean) argument, exactly like wars-generator.test.ts does for the same reason - deterministic,
+// and each test can still override it with mockReturnValueOnce/mockImplementation as needed.
+vi.mock("@/utils", async importOriginal => {
+  const actual = await importOriginal<typeof import("@/utils")>();
+  return { ...actual, gauss: vi.fn((expected: number) => expected) };
+});
+
 describe("survivalChance", () => {
   it("gives the dominant state in a two-state world a high but capped chance", () => {
     expect(survivalChance(90, 100, 2)).toBe(0.9);
@@ -58,17 +68,31 @@ describe("ErasModule.generate", () => {
 
     globalThis.window = globalThis.window || ({} as any);
     regenerate = vi.fn();
-    globalThis.window.States = { regenerate, getFullName: (s: any) => s.name } as any;
+    globalThis.window.States = { regenerate, getFullName: (s: any) => s.name, collectStatistics: vi.fn() } as any;
 
     globalThis.options = { year: 1000 } as any;
     globalThis.pack = {
       states: [
         { i: 0, name: "Neutrals" },
-        { i: 1, name: "Big", area: 90, culture: 0 },
-        { i: 2, name: "Small", area: 10, culture: 0 }
+        { i: 1, name: "Big", area: 90, culture: 0, pollTax: 0 },
+        { i: 2, name: "Small", area: 10, culture: 0, pollTax: 0 }
       ],
-      burgs: [{ i: 0 }, { i: 1, capital: 1, population: 20, cell: 1 }, { i: 2, capital: 0, population: 1, cell: 3 }],
-      cells: { state: [0, 1, 1, 2], burg: [0, 1, 0, 2] }
+      burgs: [
+        { i: 0 },
+        { i: 1, capital: 1, population: 20, cell: 1, state: 1 },
+        { i: 2, capital: 0, population: 1, cell: 3, state: 2 }
+      ],
+      cells: {
+        i: [0, 1, 2, 3],
+        state: [0, 1, 1, 2],
+        burg: [0, 1, 0, 2],
+        h: [0, 50, 50, 50],
+        area: [0, 10, 10, 10],
+        s: [0, 10, 10, 10],
+        pop: [0, 5, 5, 5],
+        culture: [0, 0, 0, 0]
+      },
+      provinces: []
     } as any;
 
     await import("./eras-generator");
@@ -230,5 +254,62 @@ describe("ErasModule.generate", () => {
 
     expect(globalThis.pack.states[1].lock).toBe(true);
     expect(globalThis.pack.states[2].lock).toBe(false);
+  });
+
+  it("grows rural and urban population by the compounded per-year growth rate", () => {
+    ErasModule.generate(2, 100);
+
+    // gauss() is stubbed to return its own mean (0.3%/year), compounded over the era's 100 years
+    const expectedFactor = (1 + 0.3 / 100) ** 100;
+    expect(globalThis.pack.cells.pop[1]).toBeCloseTo(5 * expectedFactor, 2);
+    expect(globalThis.pack.burgs[1].population).toBeCloseTo(20 * expectedFactor, 1);
+  });
+
+  it("applies war-devastation population loss instead of growth for a province annexed this era", () => {
+    // burg 1 sits on cell 1, which this province covers - cell 2 (same state, no province link)
+    // is left out on purpose, to prove only the actually-annexed province's population takes the hit
+    globalThis.pack.provinces = [0, { i: 1, state: 1, removed: false, annexedYear: 1100, burg: 1 }] as any;
+    globalThis.pack.cells.province = [0, 1, 0, 0] as any;
+
+    ErasModule.generate(2, 100); // options.year becomes 1000 + 100 = 1100, matching annexedYear above
+
+    // gauss() stubbed to its own mean - war retention mean is 0.8 (80% kept, 20% lost to the war)
+    expect(globalThis.pack.cells.pop[1]).toBeCloseTo(5 * 0.8, 3);
+    expect(globalThis.pack.burgs[1].population).toBeCloseTo(20 * 0.8, 3);
+    // cell 2 has no province link, so it grows normally instead of taking the war penalty
+    const expectedFactor = (1 + 0.3 / 100) ** 100;
+    expect(globalThis.pack.cells.pop[2]).toBeCloseTo(5 * expectedFactor, 2);
+  });
+
+  it("assimilates a province's culture once it's spent long enough under foreign rule", () => {
+    globalThis.pack.states[1].culture = 5;
+    globalThis.pack.burgs[1].culture = 5; // the state's own capital, already matching
+    globalThis.pack.burgs[2].culture = 9; // the conquered province's own (foreign) culture
+    globalThis.pack.burgs[2].population = 10; // kept well above the small-burg pruning threshold
+    // 350 years under foreign rule already, before this era even starts - well past the 300-year minimum
+    globalThis.pack.provinces = [0, { i: 1, state: 1, removed: false, burg: 2, annexedYear: 1000 - 350 }] as any;
+    globalThis.pack.cells.province = [0, 0, 0, 1] as any;
+    globalThis.pack.cells.culture = [0, 5, 5, 9] as any;
+
+    ErasModule.generate(2, 100);
+
+    expect(globalThis.pack.burgs[2].culture).toBe(5);
+    expect(globalThis.pack.cells.culture[3]).toBe(5);
+  });
+
+  it("does not assimilate a province annexed too recently", () => {
+    globalThis.pack.states[1].culture = 5;
+    globalThis.pack.burgs[1].culture = 5;
+    globalThis.pack.burgs[2].culture = 9;
+    globalThis.pack.burgs[2].population = 10; // kept well above the small-burg pruning threshold
+    // only 50 years under foreign rule by the time this era runs (1100 - 1050) - short of the 300-year minimum
+    globalThis.pack.provinces = [0, { i: 1, state: 1, removed: false, burg: 2, annexedYear: 1050 }] as any;
+    globalThis.pack.cells.province = [0, 0, 0, 1] as any;
+    globalThis.pack.cells.culture = [0, 5, 5, 9] as any;
+
+    ErasModule.generate(2, 100);
+
+    expect(globalThis.pack.burgs[2].culture).toBe(9);
+    expect(globalThis.pack.cells.culture[3]).toBe(9);
   });
 });
