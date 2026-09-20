@@ -18,6 +18,16 @@ vi.mock("@/utils", async importOriginal => {
   return { ...actual, gauss: vi.fn((expected: number) => expected) };
 });
 
+// Rebellions.resolve() runs for real here (not mocked) and its secede() builds a real heraldic
+// design via Emblems.generate() when a province actually breaks away - which internally
+// rejection-samples a few "pick again if it collides" tinctures (getTincture/replaceTincture in
+// emblems-generator.ts). Fine with real Math.random, but this file pins Math.random to a constant
+// (0.045) below, so a "random" reroll would return the exact same value forever, hanging the loop.
+// This file isn't testing heraldry, so stub it the same way it already stubs out gauss() above.
+vi.mock("@/generators/emblems-generator", () => ({
+  Emblems: { generate: vi.fn(() => ({ t1: "or" })) }
+}));
+
 describe("survivalChance", () => {
   it("gives the dominant state in a two-state world a high but capped chance", () => {
     expect(survivalChance(90, 100, 2)).toBe(0.9);

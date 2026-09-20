@@ -18,6 +18,7 @@
 // keeps a realm together even where it has every structural reason to fray, while a thin one
 // makes those same reasons bite harder.
 import { mean } from "d3";
+import { Emblems } from "@/generators/emblems-generator";
 import { getMilitaryRatio, getTroopsPerArea } from "@/generators/military-generator";
 import { getNextPersistentId } from "@/generators/persistent-id";
 import type { Province } from "@/generators/provinces-generator";
@@ -166,6 +167,12 @@ class RebellionsModule {
     if (!seatBurg?.i || seatBurg.removed) return;
 
     const newStateId = pack.states.length;
+    // a breakaway realm echoes the crown it left (kinship 0.4, the same "distinct but recognizably
+    // related" weight provinces-generator.ts gives a province not named after its own seat burg) -
+    // not state.coa itself, which would hand the rebels the literal same mutable emblem object as
+    // the parent: editing either one's shield/position afterward would silently edit both
+    const coa = Emblems.generate(state.coa, 0.4, null, state.type);
+    coa.shield = state.coa?.shield;
     const newState: State = {
       i: newStateId,
       persistentId: getNextPersistentId(),
@@ -175,7 +182,7 @@ class RebellionsModule {
       type: state.type,
       center: seatBurg.cell,
       culture: seatBurg.culture ?? state.culture,
-      coa: state.coa,
+      coa,
       form: state.form,
       formName: state.formName,
       color: getRandomColor(),

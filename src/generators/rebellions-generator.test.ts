@@ -1,6 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Rebellions } from "./rebellions-generator";
 
+// secede()'s Emblems.generate() call builds a real heraldic design, which internally
+// rejection-samples a few "pick again if it collides" tinctures (getTincture/replaceTincture in
+// emblems-generator.ts) - fine with real Math.random, but this file pins Math.random to a
+// constant (0.10) to make P() deterministic, and a constant means every "random" reroll returns
+// the exact same value forever, hanging the loop. These tests are about rebellion/unrest logic,
+// not heraldry, so stub it the same way eras-generator.test.ts stubs out gauss().
+vi.mock("@/generators/emblems-generator", () => ({
+  Emblems: { generate: vi.fn(() => ({ t1: "or" })) }
+}));
+
 // The "far province" (province 2) sits at the same spot, culture and landmass as the capital by
 // default in every test - each test tweaks exactly one factor to isolate its effect. Math.random
 // is pinned at 0.10 throughout: below the baseline chance (0.01) it would never trigger, but low

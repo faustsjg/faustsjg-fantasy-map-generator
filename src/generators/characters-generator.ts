@@ -2,6 +2,7 @@
 // people known for something small - worldbuilding texture, not adventure hooks or quest-givers.
 // Titles, dynasties and family ties are all derived procedurally from the existing state/province
 // data (form, diplomacy) - nothing here is AI-generated.
+import { Emblems } from "@/generators/emblems-generator";
 import { getNextPersistentId } from "@/generators/persistent-id";
 import { getRandomColor, minmax, P, ra, rand, rw, withAnnotations } from "@/utils";
 import type { Burg } from "./burgs-generator";
@@ -534,6 +535,13 @@ class CharactersModule {
     if (!seatBurg || !seatBurg.i || seatBurg.removed) return false;
 
     const newStateId = pack.states.length;
+    // a splinter kingdom echoes the crown it split from (kinship 0.4, the same "distinct but
+    // recognizably related" weight provinces-generator.ts gives a province not named after its own
+    // seat burg) - not state.coa itself, which would hand the splinter the literal same mutable
+    // emblem object as the parent: editing either one's shield/position afterward would silently
+    // edit both (see rebellions-generator.ts's secede(), which shares this exact reasoning)
+    const coa = Emblems.generate(state.coa, 0.4, null, state.type);
+    coa.shield = state.coa?.shield;
     const newState: State = {
       i: newStateId,
       persistentId: getNextPersistentId(),
@@ -543,7 +551,7 @@ class CharactersModule {
       type: state.type,
       center: seatBurg.cell,
       culture: state.culture,
-      coa: state.coa,
+      coa,
       form: state.form,
       formName: state.formName,
       color: getRandomColor(),

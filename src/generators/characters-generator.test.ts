@@ -1,6 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { COMMONER_ARCHETYPES } from "./characters-generator";
 
+// trySplitRealm()'s Emblems.generate() call builds a real heraldic design, which internally
+// rejection-samples a few "pick again if it collides" tinctures (getTincture/replaceTincture in
+// emblems-generator.ts) - fine with real Math.random, but this file pins Math.random to a
+// constant (0 or 0.99) to make P() deterministic, and a constant means every "random" reroll
+// returns the exact same value forever, hanging the loop. These tests are about state-splitting
+// logic, not heraldry, so stub it the same way eras-generator.test.ts stubs out gauss().
+vi.mock("@/generators/emblems-generator", () => ({
+  Emblems: { generate: vi.fn(() => ({ t1: "or" })) }
+}));
+
 function makeBurg(overrides: Record<string, unknown> = {}) {
   return { i: 1, name: "Testburg", x: 0, y: 0, cell: 1, culture: 1, population: 40, removed: false, ...overrides };
 }
