@@ -61,10 +61,13 @@ describe("ErasModule.generate", () => {
   beforeEach(async () => {
     vi.resetModules();
 
-    // P() delegates to Math.random() internally (it's a real import, not a
-    // stubbable global) — forcing random() to 0 makes every P(probability > 0)
-    // call deterministically true, since survivalChance never returns exactly 0.
-    vi.spyOn(Math, "random").mockReturnValue(0);
+    // P() delegates to Math.random() internally (it's a real import, not a stubbable global) -
+    // 0.045 sits just below every probability an existing test relies on succeeding (survivalChance's
+    // own floor is 0.05, the next-smallest anywhere in this file), so P(probability >= 0.05) is still
+    // deterministically true everywhere it used to be, but the rare Great Pandemic roll (~3.9%/era at
+    // the default 100 years/era) deterministically does NOT fire by default - tests that specifically
+    // want it to fire override this with their own mockReturnValue(0).
+    vi.spyOn(Math, "random").mockReturnValue(0.045);
 
     globalThis.window = globalThis.window || ({} as any);
     regenerate = vi.fn();
@@ -256,13 +259,15 @@ describe("ErasModule.generate", () => {
     expect(globalThis.pack.states[2].lock).toBe(false);
   });
 
-  it("grows rural and urban population by the compounded per-year growth rate", () => {
+  it("grows rural population faster than urban, each by its own compounded per-year rate", () => {
     ErasModule.generate(2, 100);
 
-    // gauss() is stubbed to return its own mean (0.3%/year), compounded over the era's 100 years
-    const expectedFactor = (1 + 0.3 / 100) ** 100;
-    expect(globalThis.pack.cells.pop[1]).toBeCloseTo(5 * expectedFactor, 2);
-    expect(globalThis.pack.burgs[1].population).toBeCloseTo(20 * expectedFactor, 1);
+    // gauss() is stubbed to return its own mean - rural 0.3%/year, urban 0.15%/year, both
+    // compounded over the era's 100 years
+    const ruralFactor = (1 + 0.3 / 100) ** 100;
+    const urbanFactor = (1 + 0.15 / 100) ** 100;
+    expect(globalThis.pack.cells.pop[1]).toBeCloseTo(5 * ruralFactor, 2);
+    expect(globalThis.pack.burgs[1].population).toBeCloseTo(20 * urbanFactor, 1);
   });
 
   it("applies war-devastation population loss instead of growth for a province annexed this era", () => {
@@ -273,12 +278,13 @@ describe("ErasModule.generate", () => {
 
     ErasModule.generate(2, 100); // options.year becomes 1000 + 100 = 1100, matching annexedYear above
 
-    // gauss() stubbed to its own mean - war retention mean is 0.8 (80% kept, 20% lost to the war)
-    expect(globalThis.pack.cells.pop[1]).toBeCloseTo(5 * 0.8, 3);
-    expect(globalThis.pack.burgs[1].population).toBeCloseTo(20 * 0.8, 3);
+    // gauss() stubbed to its own mean - war retention mean is 0.72 (72% kept, 28% lost to war and
+    // the disease that follows it), overriding growth entirely rather than combining with it
+    expect(globalThis.pack.cells.pop[1]).toBeCloseTo(5 * 0.72, 3);
+    expect(globalThis.pack.burgs[1].population).toBeCloseTo(20 * 0.72, 3);
     // cell 2 has no province link, so it grows normally instead of taking the war penalty
-    const expectedFactor = (1 + 0.3 / 100) ** 100;
-    expect(globalThis.pack.cells.pop[2]).toBeCloseTo(5 * expectedFactor, 2);
+    const ruralFactor = (1 + 0.3 / 100) ** 100;
+    expect(globalThis.pack.cells.pop[2]).toBeCloseTo(5 * ruralFactor, 2);
   });
 
   it("assimilates a province's culture once it's spent long enough under foreign rule", () => {
@@ -311,5 +317,38 @@ describe("ErasModule.generate", () => {
 
     expect(globalThis.pack.burgs[2].culture).toBe(9);
     expect(globalThis.pack.cells.culture[3]).toBe(9);
+  });
+
+  it("triggers a subsistence crisis once a state's population presses against its own carrying-capacity ceiling", () => {
+    // repeated growth (rural 0.3%/year, compounded over 100 years each era) eventually pushes
+    // state 1 up against the ceiling generate() captured at the very start (3x its starting
+    // population) - once close enough, a subsistence crisis should fire and knock it back down
+    const eras = ErasModule.generate(8, 100);
+
+    const crisisEras = eras.filter((e: any) =>
+      e.epidemicEvents.some((line: string) => line.includes("subsistence crisis"))
+    );
+    expect(crisisEras.length).toBeGreaterThan(0);
+  });
+
+  it("triggers a great pandemic that starts at a port state and spreads to its neighbors at reduced severity", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0); // this test wants every roll, including the rare pandemic, to fire
+
+    globalThis.pack.burgs[1].port = 1; // state 1's capital is the only port - must become the epicenter
+    globalThis.pack.states[1].neighbors = [2];
+    globalThis.pack.states[2].neighbors = [1];
+
+    const eras = ErasModule.generate(2, 100);
+
+    const pandemicLine = eras[1].epidemicEvents.find((line: string) => line.includes("pandemic"));
+    expect(pandemicLine).toContain("Big"); // fullName falls back to name; "Big" is state 1's fixture name
+    expect(pandemicLine).toContain("spreads to 1 neighboring realm");
+
+    // gauss() stubbed to its own mean (0.6 retention); state 1 (the epicenter, hop 0) takes the
+    // full hit, state 2 (one hop out) is blended toward "no loss" by the spread falloff (0.7)
+    const ruralFactor = (1 + 0.3 / 100) ** 100;
+    expect(globalThis.pack.cells.pop[1]).toBeCloseTo(5 * ruralFactor * 0.6, 2);
+    const state2Retention = 1 - (1 - 0.6) * 0.7;
+    expect(globalThis.pack.cells.pop[3]).toBeCloseTo(5 * ruralFactor * state2Retention, 2);
   });
 });

@@ -257,7 +257,7 @@ function selectEra(index: number, highlight = false): void {
 
   if (previousCellsState && previousStates) {
     highlightChangedTerritory(previousCellsState, previousStates, pack.cells.state, pack.states);
-    renderEventLog(previousCellsState, previousStates, pack.cells.state, pack.states);
+    renderEventLog(previousCellsState, previousStates, pack.cells.state, pack.states, era.epidemicEvents);
   } else {
     ensureEl("erasEventLog").innerHTML = "";
   }
@@ -343,12 +343,13 @@ function renderEventLog(
   previousCellsState: TypedArray,
   previousStates: State[],
   currentCellsState: TypedArray,
-  currentStates: State[]
+  currentStates: State[],
+  epidemicEvents: string[]
 ): void {
   const container = ensureEl("erasEventLog");
 
   const { bornIds, diedIds } = getBornAndDiedIds(previousStates, currentStates);
-  if (!bornIds.size && !diedIds.size) {
+  if (!bornIds.size && !diedIds.size && !epidemicEvents.length) {
     container.innerHTML = "";
     return;
   }
@@ -356,7 +357,9 @@ function renderEventLog(
   const previousByPersistentId = new Map(previousStates.map(s => [s.persistentId, s]));
   const currentByPersistentId = new Map(currentStates.map(s => [s.persistentId, s]));
 
-  const lines: string[] = [];
+  // disease/famine notes are causes, so they read naturally ahead of whatever births/deaths
+  // followed from them this era - eras-generator.ts already writes these out as plain text
+  const lines: string[] = [...epidemicEvents];
 
   for (const id of bornIds) {
     const state = currentByPersistentId.get(id);
