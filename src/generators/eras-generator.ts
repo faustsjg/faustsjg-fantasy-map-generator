@@ -343,11 +343,11 @@ class ErasModule {
       if (!growthFactor) continue; // unowned/neutral land - no growth tracked
 
       const provinceId = pack.cells.province?.[cellId];
-      const warFactor = provinceId && devastatedProvinceIds.has(provinceId) ? getWarRetention(provinceId) : 1;
+      const isDevastated = Boolean(provinceId && devastatedProvinceIds.has(provinceId));
       const pandemicFactor = pandemicRetentionByState.get(stateId) ?? 1;
       // a war-torn province doesn't also grow this era - its own retention factor replaces growth
       // entirely, then a pandemic (independent of any war) multiplies on top of whichever applies
-      const factor = (warFactor < 1 ? warFactor : growthFactor) * pandemicFactor;
+      const factor = (isDevastated ? getWarRetention(provinceId as number) : growthFactor) * pandemicFactor;
 
       const ceiling = populationCeilingByCell.get(cellId) ?? Infinity;
       pack.cells.pop[cellId] = Math.min(pack.cells.pop[cellId] * factor, ceiling);
@@ -362,9 +362,9 @@ class ErasModule {
       if (!growthFactor) continue;
 
       const provinceId = pack.cells.province?.[burg.cell];
-      const warFactor = provinceId && devastatedProvinceIds.has(provinceId) ? getWarRetention(provinceId) : 1;
+      const isDevastated = Boolean(provinceId && devastatedProvinceIds.has(provinceId));
       const pandemicFactor = pandemicRetentionByState.get(stateId) ?? 1;
-      const factor = (warFactor < 1 ? warFactor : growthFactor) * pandemicFactor;
+      const factor = (isDevastated ? getWarRetention(provinceId as number) : growthFactor) * pandemicFactor;
 
       const ceiling = populationCeilingByBurg.get(burg.i) ?? Infinity;
       burg.population = rn(Math.min((burg.population ?? 0) * factor, ceiling), 3);

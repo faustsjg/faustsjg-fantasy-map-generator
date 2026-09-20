@@ -67,6 +67,10 @@ describe("ErasModule.generate", () => {
     // deterministically true everywhere it used to be, but the rare Great Pandemic roll (~3.9%/era at
     // the default 100 years/era) deterministically does NOT fire by default - tests that specifically
     // want it to fire override this with their own mockReturnValue(0).
+    // CAUTION: this only holds for yearsPerEra up to ~115 - the pandemic's per-era chance grows with
+    // yearsPerEra (1 - (1 - 0.0004) ** yearsPerEra), and crosses 0.045 around 115 years/era. A test
+    // calling ErasModule.generate() with a longer era span than that would need its own explicit
+    // pandemic-suppressing mock, or it'll intermittently pick up an unwanted pandemic.
     vi.spyOn(Math, "random").mockReturnValue(0.045);
 
     globalThis.window = globalThis.window || ({} as any);
