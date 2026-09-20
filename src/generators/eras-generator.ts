@@ -286,8 +286,7 @@ class ErasModule {
       if (!growthFactor) continue; // unowned/neutral land - no growth tracked
 
       const provinceId = pack.cells.province?.[cellId];
-      const factor =
-        provinceId && devastatedProvinceIds.has(provinceId) ? getWarRetention(provinceId) : growthFactor;
+      const factor = provinceId && devastatedProvinceIds.has(provinceId) ? getWarRetention(provinceId) : growthFactor;
 
       const ceiling = populationCeilingByCell.get(cellId) ?? Infinity;
       pack.cells.pop[cellId] = Math.min(pack.cells.pop[cellId] * factor, ceiling);
@@ -300,8 +299,7 @@ class ErasModule {
       if (!growthFactor) continue;
 
       const provinceId = pack.cells.province?.[burg.cell];
-      const factor =
-        provinceId && devastatedProvinceIds.has(provinceId) ? getWarRetention(provinceId) : growthFactor;
+      const factor = provinceId && devastatedProvinceIds.has(provinceId) ? getWarRetention(provinceId) : growthFactor;
 
       const ceiling = populationCeilingByBurg.get(burg.i) ?? Infinity;
       burg.population = rn(Math.min((burg.population ?? 0) * factor, ceiling), 3);
