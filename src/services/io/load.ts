@@ -4,6 +4,7 @@ import { Layers } from "@/components/layers";
 import { clearMainTip, tip } from "@/components/tooltips";
 import { applyDefaultViewboxEvents } from "@/components/viewbox-events";
 import { Characters } from "@/generators/characters-generator";
+import type { Era } from "@/generators/eras-generator";
 import { GraphOverride } from "@/generators/graph-override";
 import { Guilds } from "@/generators/guilds-generator";
 import { recomputeNextPersistentId } from "@/generators/persistent-id";
@@ -409,7 +410,22 @@ async function parseLoadedData(data: string[], mapVersion: string | null): Promi
     pack.measurers = data[46] ? JSON.parse(data[46]) : [];
     pack.addedLabels = data[47] ? JSON.parse(data[47]) : [];
     pack.relief = data[49] ? JSON.parse(data[49]) : [];
-    pack.eras = data[52] ? JSON.parse(data[52]) : [];
+    const eras: Era[] = data[52] ? JSON.parse(data[52]) : [];
+    // provinces/cellsProvince/burgs/characters/epidemicEvents were added to Era in later versions
+    // than the original (year/states/cellsState only) format - a save from before one of them
+    // existed has eras missing that field entirely. eras-editor.ts's selectEra() reads every one
+    // of these unconditionally (Uint16Array.from(era.cellsProvince), structuredClone(era.burgs)...),
+    // so a missing field throws instead of just leaving that layer/panel empty for that era.
+    // cellsProvince/cellsState are parallel per-cell arrays, so an all-"no province" array of the
+    // same length as cellsState is the only backfill that keeps their indices aligned.
+    for (const era of eras) {
+      era.provinces ??= [];
+      era.cellsProvince ??= new Array(era.cellsState.length).fill(0);
+      era.burgs ??= [];
+      era.characters ??= [];
+      era.epidemicEvents ??= [];
+    }
+    pack.eras = eras;
     pack.aiTerrainEdits = data[53] ? JSON.parse(data[53]) : [];
     // states/provinces/eras just loaded above already carry their own persistentId values, but the
     // counter behind getNextPersistentId() itself isn't part of the save format and was just reset
