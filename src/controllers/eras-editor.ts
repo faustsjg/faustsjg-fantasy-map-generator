@@ -3,12 +3,19 @@ import { closeDialogs } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
 import { tip } from "@/components/tooltips";
 import { Controllers } from "@/controllers";
+import type { Era } from "@/generators/eras-generator";
 import type { State } from "@/generators/states-generator";
 import { unfog } from "@/renderers/overlays/fogging";
+import type { Emblem } from "@/types/emblems";
 import type { TypedArray } from "@/types/PackedGraph";
 import { ensureEl } from "../utils";
 
 let playbackTimer: number | undefined;
+// which already-generated era's snapshot the live pack.states/burgs/provinces currently reflect -
+// selectEra() keeps this in sync; commitCoaEditsForward() reads it to know which era (and how many
+// later ones) a coa edit made on the live map should be written back into. undefined means "not
+// currently showing a specific era's snapshot" (nothing to commit against).
+let currentEraIndex: number | undefined;
 
 function open(): void {
   closeDialogs("#erasEditor, .stable");
@@ -18,6 +25,11 @@ function open(): void {
   ensureEl<HTMLInputElement>("erasSlider").addEventListener("input", onSliderInput);
   ensureEl("erasPlayPause").addEventListener("click", togglePlayback);
   ensureEl("erasEventLog").addEventListener("click", onEventLogClick);
+
+  // the dialog was closed (not the map) while browsing an older era, e.g. to open the Emblems
+  // editor on a burg's coa - jumping straight to the latest era below would otherwise silently
+  // discard that edit the same way scrubbing the slider away from it would
+  if (currentEraIndex !== undefined) commitCoaEditsForward(currentEraIndex);
 
   if (pack.eras?.length) showPlayback(pack.eras.length - 1);
 
@@ -151,6 +163,10 @@ function generate(): void {
   if (!years || years < 1) return void tip("<i>Years per era</i> must be at least 1", false, "error");
 
   stopPlayback();
+  // a fresh run replaces pack.eras wholesale (ErasModule.generate() reads the live map, edits and
+  // all, as its own starting point) - any index left over from browsing the previous run no longer
+  // means anything against this new array
+  currentEraIndex = undefined;
   window.Eras.generate(count, years);
 
   const actualCount = pack.eras?.length ?? 0;
@@ -181,6 +197,7 @@ function showPlayback(index: number): void {
 
 function onSliderInput(event: Event): void {
   stopPlayback();
+  if (currentEraIndex !== undefined) commitCoaEditsForward(currentEraIndex);
   const index = Number((event.target as HTMLInputElement).value);
   selectEra(index, true);
 }
@@ -196,6 +213,7 @@ function startPlayback(): void {
 
   const slider = ensureEl<HTMLInputElement>("erasSlider");
   if (Number(slider.value) >= eras.length - 1) {
+    if (currentEraIndex !== undefined) commitCoaEditsForward(currentEraIndex);
     slider.value = "0";
     selectEra(0);
   }
@@ -203,6 +221,7 @@ function startPlayback(): void {
   setPlayPauseIcon(true);
   const speed = ensureEl<HTMLInputElement>("erasSpeed").valueAsNumber || 800;
   playbackTimer = window.setInterval(() => {
+    if (currentEraIndex !== undefined) commitCoaEditsForward(currentEraIndex);
     const index = Number(slider.value) + 1;
     if (index > eras.length - 1) {
       stopPlayback();
@@ -228,6 +247,67 @@ function setPlayPauseIcon(isPlaying: boolean): void {
   button.textContent = isPlaying ? "⏸" : "";
 }
 
+// selectEra() clones an era's own coa objects into the live pack.states/burgs/provinces, so
+// editing one there (the Emblems editor's drag/reshape, cultures-editor.ts's shield picker) only
+// ever touches that live clone - the stored era snapshot, and every later one, never hears about
+// it. Without this, the edit renders fine until the moment the era slider moves again (selectEra()
+// overwrites the live clone from the pristine snapshot) or the dialog is reopened after being
+// closed on an old era (which jumps straight to the latest one) - at which point it's gone
+// without a trace, and was never in what gets saved either. Called right before each of those
+// discard points, for whichever era `fromIndex` says the live map currently reflects: any coa that
+// no longer matches what that era's own snapshot has is the edit, written into that era's snapshot
+// and forward into every later one (matched by persistentId for states/provinces, since era-to-era
+// renumbering makes .i unusable for that; by .i for burgs, which are only ever pruned in place,
+// never renumbered). Eras before fromIndex are left alone - nothing about the past should change
+// because of an edit made looking at a later point in it.
+function commitCoaEditsForward(fromIndex: number): void {
+  const eras = pack.eras;
+  const fromEra = eras?.[fromIndex];
+  if (!eras || !fromEra) return;
+  const laterEras = eras.slice(fromIndex);
+
+  const applyIfChanged = <T extends { coa?: Emblem }>(
+    liveEntities: T[],
+    getCollection: (era: Era) => T[],
+    getKey: (entity: T) => number | string | undefined
+  ): void => {
+    const storedByKey = new Map<number | string, T>();
+    for (const entity of getCollection(fromEra)) {
+      const key = getKey(entity);
+      if (key !== undefined) storedByKey.set(key, entity);
+    }
+
+    for (const liveEntity of liveEntities) {
+      const key = getKey(liveEntity);
+      if (key === undefined || !liveEntity.coa) continue;
+
+      const stored = storedByKey.get(key);
+      if (!stored || JSON.stringify(stored.coa) === JSON.stringify(liveEntity.coa)) continue;
+
+      for (const era of laterEras) {
+        const target = getCollection(era).find(entity => getKey(entity) === key);
+        if (target) target.coa = structuredClone(liveEntity.coa);
+      }
+    }
+  };
+
+  applyIfChanged(
+    pack.states,
+    era => era.states,
+    s => s.persistentId
+  );
+  applyIfChanged(
+    pack.burgs,
+    era => era.burgs,
+    b => b.i
+  );
+  applyIfChanged(
+    pack.provinces ?? [],
+    era => era.provinces,
+    p => p.persistentId
+  );
+}
+
 // Apply one era's political snapshot to the live map and redraw. Geography
 // (heights, rivers, biomes...) is untouched; only what expandStates() itself
 // writes - states, provinces, burgs and their cell ownership - plus
@@ -249,6 +329,7 @@ function selectEra(index: number, highlight = false): void {
   pack.cells.province = Uint16Array.from(era.cellsProvince);
   pack.burgs = structuredClone(era.burgs);
   pack.characters = structuredClone(era.characters);
+  currentEraIndex = index;
 
   unfog();
   Layers.draw("states", "borders", "provinces", "labels", "burgIcons", "military", "goods", "emblems");
@@ -421,6 +502,11 @@ function findAbsorber(
 
 function closeErasEditor(): void {
   stopPlayback();
+  // closing alone doesn't discard the live map (only selectEra()/open() do), but pack.eras is
+  // what actually gets saved - commit now so an edit made while browsing an old era is already
+  // written into its snapshot if the user saves or exports right after closing this dialog,
+  // without ever touching the slider again
+  if (currentEraIndex !== undefined) commitCoaEditsForward(currentEraIndex);
   $("#erasEditor").dialog("destroy");
   ensureEl("erasEditor").remove();
   document.getElementById("erasEditorStyles")?.remove();
