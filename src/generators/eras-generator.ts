@@ -35,6 +35,12 @@ export interface Era {
   // or death there's no way to detect "an epidemic happened" by diffing two snapshots; the era that
   // generated them writes these down directly, for eras-editor.ts's event log to show as-is
   epidemicEvents: string[];
+  // growPopulation() rewrites pack.cells.pop (rural population) every era exactly like it rewrites
+  // burg.population (already captured via burgs above) - without this, scrubbing to an old era
+  // would leave the map's rural population showing whatever the last-generated era left it at,
+  // and a "regenerate from here" run would compute this era's carrying-capacity ceiling from the
+  // wrong (later, larger) population
+  cellsPop: number[];
 }
 
 // Chance that a state survives into the next era, based on its share of the total settled area
@@ -186,7 +192,8 @@ class ErasModule {
       cellsProvince: Array.from(pack.cells.province ?? []),
       burgs: structuredClone(pack.burgs),
       characters: structuredClone(pack.characters ?? []),
-      epidemicEvents
+      epidemicEvents,
+      cellsPop: Array.from(pack.cells.pop)
     };
   }
 
@@ -374,6 +381,16 @@ class ErasModule {
     const epidemicEvents: string[] = [];
     if (pandemicEventText) epidemicEvents.push(pandemicEventText);
     this.applySubsistenceCrises(totalPopByState, totalCeilingByState, epidemicEvents);
+
+    // burg.group (hamlet/town/city/capital...) drives which icon size a settlement draws with -
+    // without this, a burg that grows or shrinks across many eras keeps whatever icon it started
+    // with, instead of the map's own settlement tiers actually tracking its history. Recomputed
+    // fresh each era from THIS era's populations, exactly like Burgs.specify()/changeGroup() do at
+    // generation time and the burg-group editor does by hand (defineGroup() itself skips a locked
+    // burg that already has a valid group, so a manually-assigned tier still isn't overridden here).
+    const validBurgs = pack.burgs.filter(b => b.i && !b.removed);
+    const populations = validBurgs.map(b => b.population ?? 0).sort((a, b) => a - b);
+    for (const burg of validBurgs) window.Burgs.defineGroup(burg, populations);
 
     return epidemicEvents;
   }

@@ -86,6 +86,9 @@ describe("ErasModule.generate", () => {
     globalThis.window = globalThis.window || ({} as any);
     regenerate = vi.fn();
     globalThis.window.States = { regenerate, getFullName: (s: any) => s.name, collectStatistics: vi.fn() } as any;
+    // growPopulation() recomputes each burg's icon-size group (defineGroup()) every era - this
+    // file is about population/succession math, not burg-group thresholds, so stub it a no-op
+    globalThis.window.Burgs = { defineGroup: vi.fn() } as any;
 
     globalThis.options = { year: 1000 } as any;
     globalThis.pack = {
