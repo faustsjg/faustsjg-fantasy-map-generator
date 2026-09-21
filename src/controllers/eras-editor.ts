@@ -6,15 +6,13 @@ import { Controllers } from "@/controllers";
 import type { Era } from "@/generators/eras-generator";
 import type { State } from "@/generators/states-generator";
 import { unfog } from "@/renderers/overlays/fogging";
-import type { Emblem } from "@/types/emblems";
 import type { TypedArray } from "@/types/PackedGraph";
 import { ensureEl } from "../utils";
 
 let playbackTimer: number | undefined;
 // which already-generated era's snapshot the live pack.states/burgs/provinces currently reflect -
-// selectEra() keeps this in sync; commitCoaEditsForward() reads it to know which era (and how many
-// later ones) a coa edit made on the live map should be written back into. undefined means "not
-// currently showing a specific era's snapshot" (nothing to commit against).
+// selectEra() keeps this in sync; notifyEdited() reads it to know whether the map is currently
+// showing a past era at all (undefined/latest era = nothing to warn about).
 let currentEraIndex: number | undefined;
 
 function open(): void {
@@ -25,11 +23,6 @@ function open(): void {
   ensureEl<HTMLInputElement>("erasSlider").addEventListener("input", onSliderInput);
   ensureEl("erasPlayPause").addEventListener("click", togglePlayback);
   ensureEl("erasEventLog").addEventListener("click", onEventLogClick);
-
-  // the dialog was closed (not the map) while browsing an older era, e.g. to open the Emblems
-  // editor on a burg's coa - jumping straight to the latest era below would otherwise silently
-  // discard that edit the same way scrubbing the slider away from it would
-  if (currentEraIndex !== undefined) commitCoaEditsForward(currentEraIndex);
 
   if (pack.eras?.length) showPlayback(pack.eras.length - 1);
 
@@ -174,11 +167,12 @@ function generate(): void {
   if (isRegeneratingFromPast) {
     const discardedCount = eras!.length - 1 - currentEraIndex!;
     const fromYear = eras![currentEraIndex!].year;
+    const keptPrefix = eras!.slice(0, currentEraIndex!);
     confirmationDialog({
       title: "Regenerate from this era",
       message: `This discards the ${discardedCount} era(s) already generated after year ${fromYear} and generates a new future from here instead. Continue?`,
       confirm: "Regenerate",
-      onConfirm: () => runGenerate(count, years)
+      onConfirm: () => runGenerate(count, years, keptPrefix)
     });
     return;
   }
@@ -186,17 +180,23 @@ function generate(): void {
   runGenerate(count, years);
 }
 
-function runGenerate(count: number, years: number): void {
+// `keptPrefix`: the eras before whichever one the live map currently reflects, when regenerating
+// from a past era rather than from scratch - window.Eras.generate() only ever returns its own
+// fresh run (era 0 = a snapshot of the live map right now, i.e. the edited era itself), replacing
+// pack.eras outright, so without re-attaching this prefix here, the history *before* the edited
+// point would vanish too - not just the "discarded" eras after it the warning above promises to keep.
+function runGenerate(count: number, years: number, keptPrefix: Era[] = []): void {
   stopPlayback();
   // a fresh run replaces pack.eras wholesale - any index left over from browsing the previous run
   // no longer means anything against this new array
   currentEraIndex = undefined;
   window.Eras.generate(count, years);
+  if (keptPrefix.length) pack.eras = [...keptPrefix, ...(pack.eras ?? [])];
 
   const actualCount = pack.eras?.length ?? 0;
-  if (actualCount < count) {
+  if (actualCount < count + keptPrefix.length) {
     tip(
-      `Generated only ${actualCount} of ${count} eras: every surviving state locked at once in one era, leaving nothing left to regenerate`,
+      `Generated only ${actualCount - keptPrefix.length} of ${count} new era(s): every surviving state locked at once in one era, leaving nothing left to regenerate`,
       false,
       "warn"
     );
@@ -221,7 +221,6 @@ function showPlayback(index: number): void {
 
 function onSliderInput(event: Event): void {
   stopPlayback();
-  if (currentEraIndex !== undefined) commitCoaEditsForward(currentEraIndex);
   const index = Number((event.target as HTMLInputElement).value);
   selectEra(index, true);
 }
@@ -237,7 +236,6 @@ function startPlayback(): void {
 
   const slider = ensureEl<HTMLInputElement>("erasSlider");
   if (Number(slider.value) >= eras.length - 1) {
-    if (currentEraIndex !== undefined) commitCoaEditsForward(currentEraIndex);
     slider.value = "0";
     selectEra(0);
   }
@@ -245,7 +243,6 @@ function startPlayback(): void {
   setPlayPauseIcon(true);
   const speed = ensureEl<HTMLInputElement>("erasSpeed").valueAsNumber || 800;
   playbackTimer = window.setInterval(() => {
-    if (currentEraIndex !== undefined) commitCoaEditsForward(currentEraIndex);
     const index = Number(slider.value) + 1;
     if (index > eras.length - 1) {
       stopPlayback();
@@ -271,83 +268,41 @@ function setPlayPauseIcon(isPlaying: boolean): void {
   button.textContent = isPlaying ? "⏸" : "";
 }
 
-// selectEra() clones an era's own coa objects into the live pack.states/burgs/provinces, so
-// editing one there (the Emblems editor's drag/reshape, cultures-editor.ts's shield picker) only
-// ever touches that live clone - the stored era snapshot, and every later one, never hears about
-// it. Without this, the edit renders fine until the moment the era slider moves again (selectEra()
-// overwrites the live clone from the pristine snapshot) or the dialog is reopened after being
-// closed on an old era (which jumps straight to the latest one) - at which point it's gone
-// without a trace, and was never in what gets saved either. Called right before each of those
-// discard points, for whichever era `fromIndex` says the live map currently reflects: any coa that
-// no longer matches what that era's own snapshot has is the edit - confirmed once (covering every
-// changed entity at once, not one dialog per entity), then written into that era's own snapshot
-// and forward into every later one (matched by persistentId for states/provinces, since era-to-era
-// renumbering makes .i unusable for that; by .i for burgs, which are only ever pruned in place,
-// never renumbered). Eras before fromIndex are left alone - nothing about the past should change
-// because of an edit made looking at a later point in it. A cancelled confirmation simply leaves
-// the edit uncommitted, the same as if this function had never run at all.
-function commitCoaEditsForward(fromIndex: number): void {
+// Every state/burg/province/culture editor calls this right after applying a field edit (name,
+// culture, coa, treasury, population - anything), unconditionally: it's a no-op unless the map is
+// currently showing a past era's snapshot rather than the latest one (currentEraIndex, kept in
+// sync by selectEra() below). editing() and the entities themselves don't need to know which case
+// they're in.
+//
+// A field a user can edit (treasury, population, military, culture...) is also one the era
+// simulation recomputes every era on its own - era 4's treasury is *supposed* to differ from era
+// 2's even with no editing involved, simply because more time passed. So there's no way to tell
+// "the user just edited this" apart from "the simulation naturally computed something different"
+// by diffing the live map against a stored snapshot (that was this file's first attempt, and it's
+// wrong for exactly this reason - only a field the simulation never touches on its own, like coa
+// used to be treated as, could safely use that trick, and even that one turned out not to be
+// screenshot-safe once merges/quartering entered the picture). The only design that's actually
+// correct for every field alike is to run the real thing: regenerate every era from this point
+// forward, using the just-edited live map as the new starting point - exactly what "Generate"
+// already does when pressed while browsing a past era (see generate() above). This is that same
+// action, triggered by the edit itself instead of a separate button press, confirmed first since
+// it discards every era already generated after this point.
+function notifyEdited(): void {
   const eras = pack.eras;
-  const fromEra = eras?.[fromIndex];
-  if (!eras || !fromEra) return;
-  const laterEras = eras.slice(fromIndex);
+  if (currentEraIndex === undefined || !eras?.length || currentEraIndex >= eras.length - 1) return;
 
-  const pendingWrites: Array<() => void> = [];
+  const fromIndex = currentEraIndex;
+  const fromYear = eras[fromIndex].year;
+  const discardedCount = eras.length - 1 - fromIndex;
+  const yearsPerEra = eras.length > 1 ? eras[1].year - eras[0].year : 100;
+  const remainingCount = eras.length - fromIndex;
+  const keptPrefix = eras.slice(0, fromIndex);
 
-  const collectChanges = <T extends { coa?: Emblem }>(
-    liveEntities: T[],
-    getCollection: (era: Era) => T[],
-    getKey: (entity: T) => number | string | undefined
-  ): void => {
-    const storedByKey = new Map<number | string, T>();
-    for (const entity of getCollection(fromEra)) {
-      const key = getKey(entity);
-      if (key !== undefined) storedByKey.set(key, entity);
-    }
-
-    for (const liveEntity of liveEntities) {
-      const key = getKey(liveEntity);
-      if (key === undefined || !liveEntity.coa) continue;
-
-      const stored = storedByKey.get(key);
-      if (!stored || JSON.stringify(stored.coa) === JSON.stringify(liveEntity.coa)) continue;
-
-      pendingWrites.push(() => {
-        for (const era of laterEras) {
-          const target = getCollection(era).find(entity => getKey(entity) === key);
-          if (target) target.coa = structuredClone(liveEntity.coa);
-        }
-      });
-    }
-  };
-
-  collectChanges(
-    pack.states,
-    era => era.states,
-    s => s.persistentId
-  );
-  collectChanges(
-    pack.burgs,
-    era => era.burgs,
-    b => b.i
-  );
-  collectChanges(
-    pack.provinces ?? [],
-    era => era.provinces,
-    p => p.persistentId
-  );
-
-  if (!pendingWrites.length) return;
-
-  const laterCount = laterEras.length - 1;
-  const laterEraNote = laterCount > 0 ? ` and its ${laterCount} later era(s)` : "";
   confirmationDialog({
-    title: "Apply emblem edit forward",
-    message: `You edited an emblem while looking at year ${fromEra.year}. This will apply from here${laterEraNote} - the eras before it are left as they were. Continue?`,
-    confirm: "Apply",
-    onConfirm: () => {
-      for (const write of pendingWrites) write();
-    }
+    title: "This will force a regeneration",
+    message: `You just edited something while looking at year ${fromYear}. Keeping the edit means regenerating from here: the ${discardedCount} era(s) already generated after it get recomputed from this point instead - it may not play out the same way twice. Continue?`,
+    confirm: "Regenerate",
+    onConfirm: () => runGenerate(remainingCount, yearsPerEra, keptPrefix)
   });
 }
 
@@ -551,14 +506,9 @@ function findAbsorber(
 
 function closeErasEditor(): void {
   stopPlayback();
-  // closing alone doesn't discard the live map (only selectEra()/open() do), but pack.eras is
-  // what actually gets saved - commit now so an edit made while browsing an old era is already
-  // written into its snapshot if the user saves or exports right after closing this dialog,
-  // without ever touching the slider again
-  if (currentEraIndex !== undefined) commitCoaEditsForward(currentEraIndex);
   $("#erasEditor").dialog("destroy");
   ensureEl("erasEditor").remove();
   document.getElementById("erasEditorStyles")?.remove();
 }
 
-export const ErasEditor = { open };
+export const ErasEditor = { open, notifyEdited };
