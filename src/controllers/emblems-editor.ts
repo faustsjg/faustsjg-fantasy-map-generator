@@ -1,6 +1,7 @@
 import { type D3DragEvent, drag, select } from "d3";
 import { destroyDialog } from "@/components/dialog/dialog-helpers";
 import { clearMainTip, tip } from "@/components/tooltips";
+import { Controllers } from "@/controllers";
 import type { Burg } from "@/generators/burgs-generator";
 import { Emblems } from "@/generators/emblems-generator";
 import type { Province } from "@/generators/provinces-generator";
@@ -393,6 +394,7 @@ function changeShape(): void {
   const coaEl = document.getElementById(currentId);
   if (coaEl) coaEl.remove();
   EmblemRenderer.trigger(currentId, currentEl.coa);
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function showArea(): void {
@@ -407,6 +409,7 @@ function changeSize(ev: Event): void {
 
   currentEl.coa.size = size;
   redrawEmblem(currentType, currentEl.i);
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function regenerate(): void {
@@ -427,6 +430,7 @@ function regenerate(): void {
 
   EmblemRenderer.trigger(currentId, el.coa);
   redrawEmblem(currentType, currentEl.i);
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function openInArmoria(): void {
@@ -702,6 +706,7 @@ function dragEmblem(this: SVGUseElement, event: EmblemDragEvent): void {
     entity.coa.x = rn(x + endEvent.x + shift, 2);
     entity.coa.y = rn(y + endEvent.y + shift, 2);
     redrawEmblem(type, i);
+    void Controllers.ErasEditor.notifyEdited();
   });
 }
 

@@ -343,6 +343,7 @@ function changeName(): void {
   if (!pack.burgs[id].label) pack.burgs[id].label = {};
   Object.assign(pack.burgs[id].label, { text: value });
   Layers.draw("labels");
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function generateNameRandom(): void {
@@ -361,11 +362,13 @@ function changeGroup(this: HTMLSelectElement): void {
 function changeType(this: HTMLSelectElement): void {
   const id = getSelectedId();
   pack.burgs[id].type = this.value as Burg["type"];
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function changeCulture(this: HTMLSelectElement): void {
   const id = getSelectedId();
   pack.burgs[id].culture = +this.value;
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function generateNameCulture(): void {
@@ -384,6 +387,7 @@ function changePopulation(): void {
     4
   );
   updateBurgPreview(burg);
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function toggleFeature(this: HTMLElement): void {
@@ -401,6 +405,7 @@ function toggleFeature(this: HTMLElement): void {
 
   ensureEl("burgEditAnchorStyle").style.display = burg.port ? "inline-block" : "none";
   updateBurgPreview(burg);
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function togglePort(burgId: number): void {

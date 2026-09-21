@@ -520,6 +520,7 @@ function stateChangeFill(fillBox: FillBoxElement): void {
     pack.states[state].color = newFill;
     Layers.draw("states");
     Layers.draw("military");
+    void Controllers.ErasEditor.notifyEdited();
   };
 
   void Controllers.ColorPicker.open(currentFill, callback);
@@ -633,6 +634,7 @@ function editStateName(state: number): void {
       Layers.draw("labels");
     }
     refreshStatesEditor();
+    if (changed) void Controllers.ErasEditor.notifyEdited();
   }
 }
 
@@ -912,6 +914,7 @@ function openTreasuryDialog(stateId: number): void {
         if (Number.isFinite(newPoll)) state.pollTax = rn(newPoll, 4);
         if (Number.isFinite(newTreasury)) state.treasury = rn(newTreasury, 2);
         refreshStatesEditor();
+        void Controllers.ErasEditor.notifyEdited();
         $(this).dialog("close");
       },
       Cancel: function (this: HTMLElement) {
@@ -931,18 +934,21 @@ function stateCapitalZoomIn(state: number): void {
 function stateChangeCulture(state: number, line: HTMLElement, value: string): void {
   pack.states[state].culture = +value;
   line.dataset.base = String(+value);
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function stateChangeType(state: number, line: HTMLElement, value: string): void {
   pack.states[state].type = value;
   line.dataset.type = value;
   recalculateStates();
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function stateChangeExpansionism(state: number, line: HTMLElement, value: string): void {
   pack.states[state].expansionism = Number(value);
   line.dataset.expansionism = value;
   recalculateStates();
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function toggleFog(state: number, cl: DOMTokenList): void {

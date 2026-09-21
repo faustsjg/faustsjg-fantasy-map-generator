@@ -563,6 +563,7 @@ function cultureChangeEmblemsShape(this: HTMLSelectElement): void {
     burg.coa.shield = shape;
     rerenderCOA(`burgCOA${burg.i}`, burg.coa);
   });
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function changePopulation(this: HTMLElement): void {
@@ -663,6 +664,7 @@ function applyPopulationChange(
 
   Layers.draw("population");
   refreshCulturesEditor();
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function cultureRegenerateBurgs(this: HTMLElement): void {

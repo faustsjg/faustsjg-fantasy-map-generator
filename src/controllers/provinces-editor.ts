@@ -400,6 +400,7 @@ function changeFill(fillBox: FillBoxElement): void {
     fillBox.fill = newFill;
     pack.provinces[p].color = newFill;
     Layers.draw("provinces");
+    void Controllers.ErasEditor.notifyEdited();
   };
 
   void Controllers.ColorPicker.open(currentFill, callback);
@@ -613,6 +614,7 @@ function changePopulation(province: number): void {
 
     Layers.draw("population");
     refreshProvincesEditor();
+    void Controllers.ErasEditor.notifyEdited();
   }
 }
 
@@ -843,12 +845,14 @@ function applyNameChange(p: Province): void {
   Layers.draw("provinces");
   Layers.draw("labels");
   refreshProvincesEditor();
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function changeCapital(p: number, line: HTMLElement, value: string): void {
   line.dataset.capital = pack.burgs[+value].name;
   pack.provinces[p].center = pack.burgs[+value].cell;
   pack.provinces[p].burg = +value;
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function togglePercentageMode(): void {
