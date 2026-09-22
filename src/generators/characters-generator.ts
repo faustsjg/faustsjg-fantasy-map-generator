@@ -542,6 +542,14 @@ class CharactersModule {
     // edit both (see rebellions-generator.ts's secede(), which shares this exact reasoning)
     const coa = Emblems.generate(state.coa, 0.4, null, state.type);
     coa.shield = state.coa?.shield;
+    // states-generator.ts's own generateDiplomacy() only runs once at the start of the era, before
+    // this state exists - without its own relations array (one entry per state, "x" for itself),
+    // anything that later reads or writes state.diplomacy[i] for every state (declaring another
+    // province's independence, the Diplomacy editor) throws on this one until the next era's
+    // regeneration rebuilds it properly. A peaceful sibling split, unlike a rebellion, so friendly
+    // to the realm it split from rather than hostile - same house, a cadet branch.
+    const diplomacy = pack.states.map(s => (!s.i || s.removed ? "x" : s.i === state.i ? "Friendly" : "Neutral"));
+    diplomacy.push("x");
     const newState: State = {
       i: newStateId,
       persistentId: getNextPersistentId(),
@@ -557,12 +565,17 @@ class CharactersModule {
       color: getRandomColor(),
       salesTax: state.salesTax,
       pollTax: state.pollTax,
-      treasury: 0
+      treasury: 0,
+      diplomacy
     };
     // a simpler fallback than States.getFullName's adjective-form rules - good enough for a
     // splinter state, and keeps this module free of a cross-generator dependency
     newState.fullName = `${newState.formName} of ${newState.name}`;
     pack.states.push(newState);
+    for (const s of pack.states) {
+      if (!s.i || s.removed || s.i === newStateId || !s.diplomacy) continue;
+      s.diplomacy[newStateId] = s.i === state.i ? "Friendly" : "Neutral";
+    }
     // states-generator.ts's own capital bookkeeping (stale-capital cleanup, capital-first
     // province-seat sorting) relies on this flag - without it, a later era's regeneration doesn't
     // know this burg is already someone's capital and can hand it to another state

@@ -248,7 +248,7 @@ function renderDialog(): void {
     else if (classList.contains("icon-pin")) toggleFog(stateId, classList);
     else if (classList.contains("icon-target"))
       highlightElement(select("#regions").select(`#state${stateId}`).node() as Element, 4);
-    else if (classList.contains("icon-trash-empty")) stateRemovePrompt(stateId);
+    else if (classList.contains("icon-trash-empty")) void stateRemovePrompt(stateId);
     else if (classList.contains("icon-users")) void Controllers.DynastyOverview.open(stateId);
     else if (classList.contains("icon-lock") || classList.contains("icon-lock-open"))
       updateLockStatus(stateId, classList);
@@ -959,14 +959,22 @@ function toggleFog(state: number, cl: DOMTokenList): void {
   cl.toggle("inactive");
 }
 
-function stateRemovePrompt(state: number): void {
+async function stateRemovePrompt(state: number): Promise<void> {
   if (customization) return;
+
+  const regeneration = await Controllers.ErasEditor.pastEraRegeneration();
+  const message = regeneration
+    ? `Are you sure you want to remove the state? This action cannot be reverted. ${regeneration.sentence}.`
+    : "Are you sure you want to remove the state? <br>This action cannot be reverted";
 
   confirmationDialog({
     title: "Remove state",
-    message: "Are you sure you want to remove the state? <br>This action cannot be reverted",
+    message,
     confirm: "Remove",
-    onConfirm: () => stateRemove(state)
+    onConfirm: () => {
+      stateRemove(state);
+      regeneration?.apply();
+    }
   });
 }
 
@@ -1686,18 +1694,22 @@ function openStateMergeDialog(): void {
           return;
         }
 
-        confirmationDialog({
-          title: "Merge states",
-          // prettier-ignore
-          message: /* html */ `
+        const dialogEl = this;
+        void Controllers.ErasEditor.pastEraRegeneration().then(regeneration => {
+          confirmationDialog({
+            title: "Merge states",
+            // prettier-ignore
+            message: /* html */ `
             <p>The following states will be <strong>removed</strong>: ${statesToMerge.map(stateId => `${emblem(stateId)}${(pack.states)[stateId].name}`).join(", ")}.</p>
             <p>Removed states data (burgs, provinces, regiments) will be assigned to ${emblem(rullingState.i)}${rullingState.name}.</p>
-            <p>Are you sure you want to merge states? This action cannot be reverted.</p>`,
-          confirm: "Merge",
-          onConfirm: () => {
-            mergeStates(statesToMerge, rulingStateId);
-            $(this).dialog("close");
-          }
+            <p>Are you sure you want to merge states? This action cannot be reverted.${regeneration ? ` ${regeneration.sentence}.` : ""}</p>`,
+            confirm: "Merge",
+            onConfirm: () => {
+              mergeStates(statesToMerge, rulingStateId);
+              regeneration?.apply();
+              $(dialogEl).dialog("close");
+            }
+          });
         });
       },
       Cancel: function (this: HTMLElement) {

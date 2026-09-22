@@ -173,6 +173,14 @@ class RebellionsModule {
     // the parent: editing either one's shield/position afterward would silently edit both
     const coa = Emblems.generate(state.coa, 0.4, null, state.type);
     coa.shield = state.coa?.shield;
+    // states-generator.ts's own generateDiplomacy() only runs once at the start of the era, before
+    // this state exists - without its own relations array (one entry per state, "x" for itself),
+    // anything that later reads or writes state.diplomacy[i] for every state (declaring another
+    // province's independence, the Diplomacy editor) throws on this one until the next era's
+    // regeneration rebuilds it properly. Freshly hostile to the crown it just broke from, neutral
+    // to everyone else - matches declareProvinceIndependence()'s own reasoning for the same event.
+    const diplomacy = pack.states.map(s => (!s.i || s.removed ? "x" : s.i === state.i ? "Enemy" : "Neutral"));
+    diplomacy.push("x");
     const newState: State = {
       i: newStateId,
       persistentId: getNextPersistentId(),
@@ -188,10 +196,15 @@ class RebellionsModule {
       color: getRandomColor(),
       salesTax: state.salesTax,
       pollTax: state.pollTax,
-      treasury: 0
+      treasury: 0,
+      diplomacy
     };
     newState.fullName = `${newState.formName} of ${newState.name} (rebelled against ${state.name})`;
     pack.states.push(newState);
+    for (const s of pack.states) {
+      if (!s.i || s.removed || s.i === newStateId || !s.diplomacy) continue;
+      s.diplomacy[newStateId] = s.i === state.i ? "Enemy" : "Neutral";
+    }
     // states-generator.ts's and provinces-generator.ts's own capital bookkeeping (stale-capital
     // cleanup, capital-first province-seat sorting) relies on this flag - without it, a later era's
     // regeneration doesn't know this burg is already someone's capital and can hand it to another state

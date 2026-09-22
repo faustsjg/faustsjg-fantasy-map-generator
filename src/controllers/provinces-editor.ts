@@ -205,7 +205,7 @@ function renderDialog(): void {
     else if (cl.contains("coaIcon"))
       void Controllers.EmblemsEditor.open("province", `provinceCOA${p}`, pack.provinces[p]);
     else if (cl.contains("icon-star-empty")) capitalZoomIn(p);
-    else if (cl.contains("icon-flag-empty")) triggerIndependencePromps(p);
+    else if (cl.contains("icon-flag-empty")) void triggerIndependencePromps(p);
     else if (cl.contains("icon-dot-circled")) void Controllers.BurgsOverview.open({ stateId });
     else if (cl.contains("culturePopulation")) changePopulation(p);
     else if (cl.contains("icon-target"))
@@ -412,16 +412,24 @@ function capitalZoomIn(p: number): void {
   zoomTo(x, y, 8, 2000);
 }
 
-function triggerIndependencePromps(p: number): void {
+async function triggerIndependencePromps(p: number): Promise<void> {
+  // folded into this same dialog instead of stacking a second one on top, when the map is
+  // currently showing a past era - see eras-editor.ts's pastEraRegeneration()
+  const regeneration = await Controllers.ErasEditor.pastEraRegeneration();
+  const message = regeneration
+    ? `Are you sure you want to declare province independence? It will turn the province into a new state. ${regeneration.sentence}.`
+    : "Are you sure you want to declare province independence? <br>It will turn province into a new state";
+
   confirmationDialog({
     title: "Declare independence",
-    message: "Are you sure you want to declare province independence? <br>It will turn province into a new state",
+    message,
     confirm: "Declare",
     onConfirm: () => {
       const result = declareProvinceIndependence(p);
       if (!result) return;
       const [oldStateId, newStateId] = result;
       updateStatesPostRelease([oldStateId], [newStateId]);
+      regeneration?.apply();
     }
   });
 }
@@ -1036,12 +1044,17 @@ function showChart(): void {
   hideNonfittingLabels();
 }
 
-function triggerProvincesRelease(): void {
+async function triggerProvincesRelease(): Promise<void> {
+  const regeneration = await Controllers.ErasEditor.pastEraRegeneration();
+  const message = regeneration
+    ? `Are you sure you want to release all provinces? It will turn all separable provinces into independent states. Capital province and provinces without any burgs will stay as they are. ${regeneration.sentence}.`
+    : `Are you sure you want to release all provinces?
+        </br>It will turn all separable provinces into independent states.
+        </br>Capital province and provinces without any burgs will state as they are`;
+
   confirmationDialog({
     title: "Release provinces",
-    message: `Are you sure you want to release all provinces?
-        </br>It will turn all separable provinces into independent states.
-        </br>Capital province and provinces without any burgs will state as they are`,
+    message,
     confirm: "Release",
     onConfirm: () => {
       const oldStateIds: number[] = [];
@@ -1059,6 +1072,7 @@ function triggerProvincesRelease(): void {
       });
 
       updateStatesPostRelease(unique(oldStateIds), newStateIds);
+      regeneration?.apply();
     }
   });
 }

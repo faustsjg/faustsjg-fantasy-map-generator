@@ -11,6 +11,7 @@ import {
   type TableView
 } from "@/components/dialog/table";
 import { Layers } from "@/components/layers";
+import { Controllers } from "@/controllers";
 import { clearMainTip, tip } from "@/components/tooltips";
 import { applyDefaultViewboxEvents } from "@/components/viewbox-events";
 import type { State } from "@/generators/states-generator";
@@ -474,6 +475,7 @@ function changeRelation(subjectId: number, objectId: number, oldRelation: string
 
   refreshDiplomacyEditor();
   if (findEl("diplomacyMatrix")) showRelationsMatrix();
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function regenerateRelations(): void {
@@ -494,6 +496,7 @@ function resetRelations(): void {
   });
 
   refreshDiplomacyEditor();
+  void Controllers.ErasEditor.notifyEdited();
 }
 
 function showRelationsHistory(): void {

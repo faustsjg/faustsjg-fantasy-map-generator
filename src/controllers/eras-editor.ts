@@ -205,16 +205,28 @@ function runGenerate(count: number, years: number, keptPrefix: Era[] = []): void
   showPlayback(actualCount - 1);
 }
 
+// The Eras dialog's own DOM only exists while it's open (renderDialog() builds it, closeErasEditor()
+// tears it down) - but runGenerate() can now fire from other editors' own "this will force a
+// regeneration" flows (declaring independence, merging/removing a state) whose dialogs have no
+// reason to have the Eras one open at the same time. Every DOM touch below and in selectEra() is
+// guarded on this so those flows still update the live map correctly without crashing on a
+// missing #erasPlayback/#erasYearLabel/#erasEventLog.
+function isErasDialogOpen(): boolean {
+  return document.getElementById("erasEditor") !== null;
+}
+
 function showPlayback(index: number): void {
   const eras = pack.eras;
   if (!eras?.length) return;
 
-  const playback = ensureEl("erasPlayback");
-  playback.hidden = false;
+  if (isErasDialogOpen()) {
+    const playback = ensureEl("erasPlayback");
+    playback.hidden = false;
 
-  const slider = ensureEl<HTMLInputElement>("erasSlider");
-  slider.max = String(eras.length - 1);
-  slider.value = String(index);
+    const slider = ensureEl<HTMLInputElement>("erasSlider");
+    slider.max = String(eras.length - 1);
+    slider.value = String(index);
+  }
 
   selectEra(index);
 }
@@ -268,12 +280,15 @@ function setPlayPauseIcon(isPlaying: boolean): void {
   button.textContent = isPlaying ? "⏸" : "";
 }
 
-// Every state/burg/province/culture editor calls this right after applying a field edit (name,
-// culture, coa, treasury, population - anything), unconditionally: it's a no-op unless the map is
-// currently showing a past era's snapshot rather than the latest one (currentEraIndex, kept in
-// sync by selectEra() below). editing() and the entities themselves don't need to know which case
-// they're in.
-//
+interface PastEraRegeneration {
+  // one sentence, no trailing "Continue?" - the caller's own dialog supplies that
+  sentence: string;
+  // performs the regeneration itself; does not ask for confirmation - the caller's own dialog
+  // (notifyEdited()'s "This will force a regeneration", or another editor's own action dialog)
+  // already covers that
+  apply: () => void;
+}
+
 // A field a user can edit (treasury, population, military, culture...) is also one the era
 // simulation recomputes every era on its own - era 4's treasury is *supposed* to differ from era
 // 2's even with no editing involved, simply because more time passed. So there's no way to tell
@@ -284,12 +299,14 @@ function setPlayPauseIcon(isPlaying: boolean): void {
 // screenshot-safe once merges/quartering entered the picture). The only design that's actually
 // correct for every field alike is to run the real thing: regenerate every era from this point
 // forward, using the just-edited live map as the new starting point - exactly what "Generate"
-// already does when pressed while browsing a past era (see generate() above). This is that same
-// action, triggered by the edit itself instead of a separate button press, confirmed first since
-// it discards every era already generated after this point.
-function notifyEdited(): void {
+// already does when pressed while browsing a past era (see generate() above).
+//
+// Returns undefined when there's nothing to warn about (no Eras generated yet, or the map is
+// already showing the latest one) - callers use that to skip the warning entirely rather than
+// show an empty or nonsensical one.
+function pastEraRegeneration(): PastEraRegeneration | undefined {
   const eras = pack.eras;
-  if (currentEraIndex === undefined || !eras?.length || currentEraIndex >= eras.length - 1) return;
+  if (currentEraIndex === undefined || !eras?.length || currentEraIndex >= eras.length - 1) return undefined;
 
   const fromIndex = currentEraIndex;
   const fromYear = eras[fromIndex].year;
@@ -298,11 +315,27 @@ function notifyEdited(): void {
   const remainingCount = eras.length - fromIndex;
   const keptPrefix = eras.slice(0, fromIndex);
 
+  return {
+    sentence: `Keeping this means regenerating from year ${fromYear}: the ${discardedCount} era(s) already generated after it get recomputed from this point instead, and it may not play out the same way twice`,
+    apply: () => runGenerate(remainingCount, yearsPerEra, keptPrefix)
+  };
+}
+
+// Every state/burg/province/culture editor calls this right after applying a field edit (name,
+// culture, coa, treasury, population - anything), unconditionally: it's a no-op unless the map is
+// currently showing a past era's snapshot rather than the latest one. Editors that already show
+// their own confirmation for the edit itself (declaring independence, merging states) use
+// pastEraRegeneration() directly instead, to fold this into that same dialog rather than
+// stacking a second one on top.
+function notifyEdited(): void {
+  const regeneration = pastEraRegeneration();
+  if (!regeneration) return;
+
   confirmationDialog({
     title: "This will force a regeneration",
-    message: `You just edited something while looking at year ${fromYear}. Keeping the edit means regenerating from here: the ${discardedCount} era(s) already generated after it get recomputed from this point instead - it may not play out the same way twice. Continue?`,
+    message: `You just edited something while looking at a past era. ${regeneration.sentence}. Continue?`,
     confirm: "Regenerate",
-    onConfirm: () => runGenerate(remainingCount, yearsPerEra, keptPrefix)
+    onConfirm: regeneration.apply
   });
 }
 
@@ -337,6 +370,8 @@ function selectEra(index: number, highlight = false): void {
 
   unfog();
   Layers.draw("states", "borders", "provinces", "labels", "burgIcons", "military", "goods", "emblems");
+
+  if (!isErasDialogOpen()) return;
 
   ensureEl("erasYearLabel").textContent = `Year: ${era.year}`;
 
@@ -511,4 +546,4 @@ function closeErasEditor(): void {
   document.getElementById("erasEditorStyles")?.remove();
 }
 
-export const ErasEditor = { open, notifyEdited };
+export const ErasEditor = { open, notifyEdited, pastEraRegeneration };
