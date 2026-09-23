@@ -37,6 +37,13 @@ export interface State {
   culture: number;
   coa: Emblem;
   lock?: boolean;
+  // true only when the user explicitly locked this state via the UI (states-editor.ts's
+  // updateLockStatus / the locks-overview panel) - unlike `lock`, which eras-generator.ts's
+  // applySuccession() also rewrites every era as that era's computed survival outcome, this field is
+  // never touched by the simulation. applySuccession() reads it to decide whether to even roll the
+  // dice for this era, so a manual lock persists across eras instead of being overwritten by a
+  // lucky/unlucky survival roll.
+  userLocked?: boolean;
   removed?: boolean;
   pole?: [number, number];
   neighbors?: number[];

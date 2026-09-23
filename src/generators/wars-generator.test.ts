@@ -102,6 +102,67 @@ describe("WarsModule.resolveCampaigns", () => {
     expect(attacker.fullName).toBe("Bigland (absorbed Smallland)");
   });
 
+  it("leaves a userLocked defender fully untouched, even when it would otherwise be fully absorbed", () => {
+    const attacker = makeState({ i: 1, campaigns: [{ name: "War", start: 1000, attacker: 1, defender: 2 }] });
+    const defender = makeState({
+      i: 2,
+      name: "Smallland",
+      area: 5,
+      expansionism: 1,
+      capital: 2,
+      campaigns: [],
+      userLocked: true
+    });
+
+    globalThis.pack = {
+      states: [0 as any, attacker, defender],
+      burgs: [0 as any, { i: 1, cell: 1, state: 1 }, { i: 2, cell: 2, state: 2 }],
+      provinces: [0 as any, makeProvince({ i: 1, state: 1 }), makeProvince({ i: 2, state: 2 })],
+      cells: { i: [0, 1, 2], c: [[], [2], [1]], state: [0, 1, 2], province: [0, 1, 2] }
+    } as any;
+
+    Wars.resolveCampaigns();
+
+    expect(globalThis.pack.provinces[2].state).toBe(2);
+    expect(globalThis.pack.burgs[2].state).toBe(2);
+    expect(Array.from(globalThis.pack.cells.state)).toEqual([0, 1, 2]);
+    expect(defender.removed).toBeFalsy();
+    expect(collectStatistics).not.toHaveBeenCalled();
+  });
+
+  it("skips an individually locked border province and takes another unlocked one instead", () => {
+    const attacker = makeState({
+      i: 1,
+      campaigns: [{ name: "War", start: 1000, attacker: 1, defender: 2 }]
+    });
+    const defender = makeState({ i: 2, name: "Smallland", area: 10, expansionism: 1, capital: 2, campaigns: [] });
+
+    globalThis.pack = {
+      states: [0 as any, attacker, defender],
+      burgs: [0 as any, { i: 1, cell: 1, state: 1 }, { i: 2, cell: 4, state: 2 }],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1 }),
+        makeProvince({ i: 2, state: 2, lock: true }), // borders the attacker (cell 2 - cell 1), but locked
+        makeProvince({ i: 3, state: 2 }) // also borders the attacker (cell 3 - cell 1), unlocked
+      ],
+      cells: {
+        i: [0, 1, 2, 3],
+        c: [[], [2, 3], [1], [1]],
+        state: [0, 1, 2, 2],
+        province: [0, 1, 2, 3]
+      }
+    } as any;
+
+    Wars.resolveCampaigns();
+
+    // the locked province is excluded from the border set entirely, so the unlocked one is taken
+    expect(globalThis.pack.provinces[2].state).toBe(2);
+    expect(globalThis.pack.provinces[2].annexedYear).toBeUndefined();
+    expect(globalThis.pack.provinces[3].state).toBe(1);
+    expect(globalThis.pack.provinces[3].annexedYear).toBe(1000);
+  });
+
   it("replaces any earlier absorption/rebellion tag instead of piling a new one on top of it", () => {
     const attacker = makeState({
       i: 1,

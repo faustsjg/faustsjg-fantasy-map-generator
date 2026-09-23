@@ -44,6 +44,7 @@ ensureEl("toolsContent").addEventListener("click", event => {
   else if (buttonId === "overviewMarketsButton") void Controllers.MarketsOverview.open();
   else if (buttonId === "overviewGuildsButton") void Controllers.GuildsOverview.open();
   else if (buttonId === "overviewCharactersButton") void Controllers.CharactersOverview.open();
+  else if (buttonId === "overviewLocksButton") void Controllers.LocksOverview.open();
   else if (buttonId === "overviewCellsButton") void Controllers.CellInfo.open();
   else if (buttonId === "openMinimapButton") void Controllers.Minimap.open();
   else if (buttonId === "configRegenerateMarkers") void Controllers.MarkersSettings.open();

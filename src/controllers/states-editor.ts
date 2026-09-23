@@ -1694,7 +1694,6 @@ function openStateMergeDialog(): void {
           return;
         }
 
-        const dialogEl = this;
         void Controllers.ErasEditor.pastEraRegeneration().then(regeneration => {
           confirmationDialog({
             title: "Merge states",
@@ -1707,7 +1706,7 @@ function openStateMergeDialog(): void {
             onConfirm: () => {
               mergeStates(statesToMerge, rulingStateId);
               regeneration?.apply();
-              $(dialogEl).dialog("close");
+              $(this).dialog("close");
             }
           });
         });
@@ -1824,6 +1823,7 @@ function downloadStatesCsv(): void {
 function updateLockStatus(stateId: number, classList: DOMTokenList): void {
   const s = pack.states[stateId];
   s.lock = !s.lock;
+  s.userLocked = s.lock;
 
   classList.toggle("icon-lock-open");
   classList.toggle("icon-lock");

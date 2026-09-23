@@ -64,6 +64,11 @@ class WarsModule {
     defender: State,
     provinceAdjacency: Map<number, Set<number>>
   ): { changed: boolean; absorbedName?: string } {
+    // a state the user locked is fully immune to conquest - this also covers the full-collapse
+    // branch further down, since it's unreachable once this returns; a locked attacker is NOT
+    // restricted here, lock only protects, it doesn't pacify
+    if (defender.userLocked) return { changed: false };
+
     const attackerPower = (attacker.area ?? 0) * attacker.expansionism;
     const defenderPower = (defender.area ?? 0) * defender.expansionism;
     // same margin generateDiplomacy() requires before it even declares the war - a war Azgaar
@@ -73,8 +78,11 @@ class WarsModule {
     const defenderProvinces = (pack.provinces ?? []).filter(p => p.i && !p.removed && p.state === defender.i);
     if (!defenderProvinces.length) return { changed: false };
 
-    const border = defenderProvinces.filter(p =>
-      [...(provinceAdjacency.get(p.i) ?? [])].some(neighborId => pack.provinces?.[neighborId]?.state === attacker.i)
+    // a locked province is shielded individually too, even for a defender that isn't itself locked
+    const border = defenderProvinces.filter(
+      p =>
+        !p.lock &&
+        [...(provinceAdjacency.get(p.i) ?? [])].some(neighborId => pack.provinces?.[neighborId]?.state === attacker.i)
     );
     if (!border.length) return { changed: false }; // no shared border - a naval or coalition war, nothing to take on land
 
@@ -111,6 +119,7 @@ class WarsModule {
   }
 
   private transferProvince(province: Province, to: State): void {
+    if (province.lock) return; // locked provinces never change hands, regardless of caller
     province.state = to.i;
     province.annexedYear = options.year; // freshly conquered - a rebellion risk factor, decaying over time
     for (const cellId of pack.cells.i) {

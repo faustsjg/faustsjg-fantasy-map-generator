@@ -453,6 +453,9 @@ class CharactersModule {
   // a childless ruler married into another crown: their realm doesn't pass to a stranger, it
   // merges into their spouse's - the smaller crown's territory, provinces and burgs transfer, and
   // the spouse's ruler (already resolved this era) reigns over both
+  // TODO: same lock-immunity treatment as wars-generator.ts's annex()/transferProvince() and
+  // rebellions-generator.ts's resolve() - a userLocked state isn't currently protected from being
+  // absorbed here. Not implemented yet; wasn't asked for, flagged as a same-shape follow-up.
   private resolveMarriageMerge(
     state: State,
     prior: Character,
@@ -507,6 +510,10 @@ class CharactersModule {
   // the inverse of a merge: carves roughly half of the realm's provinces into a brand new state
   // for the passed-over sibling, a cadet branch of the same house. Needs at least 2 provinces to
   // mean anything - a single-province realm just isn't divisible this way, so it's left alone
+  // TODO: same lock-immunity treatment as wars-generator.ts's annex()/transferProvince() and
+  // rebellions-generator.ts's resolve() - a userLocked state or a locked province isn't currently
+  // protected from being carved up here. Not implemented yet; wasn't asked for, flagged as a
+  // same-shape follow-up.
   private trySplitRealm(
     state: State,
     primaryRulerIndex: number,

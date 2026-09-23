@@ -188,6 +188,30 @@ describe("RebellionsModule.resolve", () => {
     expect(globalThis.pack.states[1].removed).toBeFalsy();
   });
 
+  it("never lets a locked province secede, even at a chance that would otherwise always succeed", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0); // P() always succeeds if evaluated
+    globalThis.pack = makePack();
+    globalThis.pack.provinces[2].lock = true;
+
+    Rebellions.resolve();
+
+    expect(globalThis.pack.provinces[2].state).toBe(1);
+    expect(globalThis.pack.states).toHaveLength(2);
+    expect(collectStatistics).not.toHaveBeenCalled();
+  });
+
+  it("never lets any province of a userLocked state secede, even at a chance that would otherwise always succeed", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0); // P() always succeeds if evaluated
+    globalThis.pack = makePack();
+    globalThis.pack.states[1].userLocked = true;
+
+    Rebellions.resolve();
+
+    expect(globalThis.pack.provinces[2].state).toBe(1);
+    expect(globalThis.pack.states).toHaveLength(2);
+    expect(collectStatistics).not.toHaveBeenCalled();
+  });
+
   it("does not evaluate a state with fewer than two provinces", () => {
     vi.spyOn(Math, "random").mockReturnValue(0); // P() would always succeed if it were even called
     globalThis.pack = makePack({ province2Count: 1 });

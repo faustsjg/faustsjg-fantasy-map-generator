@@ -225,6 +225,20 @@ describe("ErasModule.generate", () => {
     expect(globalThis.pack.states[0].lock).toBeUndefined();
   });
 
+  it("keeps a user-locked state's lock true even when the survival roll would have failed", () => {
+    globalThis.pack.states[1].lock = true;
+    globalThis.pack.states[1].userLocked = true;
+    // force every P() call to fail this once, overriding the beforeEach's always-succeed stub -
+    // if applySuccession() rerolled state 1 despite userLocked, this would flip it to false
+    vi.spyOn(Math, "random").mockReturnValue(0.99);
+
+    ErasModule.generate(2, 100);
+
+    expect(globalThis.pack.states[1].lock).toBe(true);
+    // the non-userLocked sibling still rerolls every era as before, and loses on a forced-fail roll
+    expect(globalThis.pack.states[2].lock).toBe(false);
+  });
+
   it("never removes a capital burg regardless of population", () => {
     ErasModule.generate(2, 100);
     const capital = globalThis.pack.burgs.find((b: any) => b.capital);

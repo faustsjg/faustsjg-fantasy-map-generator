@@ -208,8 +208,13 @@ class ErasModule {
     const totalArea = sum(validStates.map(s => s.area ?? 0)) || 1;
     const averageTroopsPerArea = mean(validStates.map(getTroopsPerArea)) || 0;
     for (const state of validStates) {
-      const militaryRatio = getMilitaryRatio(getTroopsPerArea(state), averageTroopsPerArea);
-      state.lock = P(survivalChance(state.area ?? 0, totalArea, validStates.length, militaryRatio));
+      // a state the user locked by hand stays locked - skip the reroll entirely rather than "only
+      // overwrite if not already true", which would wrongly turn any state that merely won one
+      // era's coin flip into permanent immunity for every era after
+      if (!state.userLocked) {
+        const militaryRatio = getMilitaryRatio(getTroopsPerArea(state), averageTroopsPerArea);
+        state.lock = P(survivalChance(state.area ?? 0, totalArea, validStates.length, militaryRatio));
+      }
 
       // States.defineStateForms() skips locked states, so a surviving name
       // only drifts here; fullName is recomputed from the mutated name and

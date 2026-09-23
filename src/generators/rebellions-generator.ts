@@ -74,6 +74,10 @@ class RebellionsModule {
 
       for (const province of provinces) {
         if (province.i === capitalProvinceId) continue; // the capital itself never rebels against its own crown
+        // a locked province, or a state the user locked, is immune to secession - state.userLocked
+        // (not the raw .lock applySuccession() also sets from this era's survival roll) so a state
+        // that merely won this era's coin flip doesn't incidentally become immune too
+        if (province.lock || state.userLocked) continue;
 
         const sameStateNeighbors = this.countSameStateNeighbors(province, provinceAdjacency);
         const chance = this.getUnrestChance(
