@@ -622,6 +622,68 @@ describe("CharactersModule.applySuccession", () => {
     expect(globalThis.window.States.collectStatistics).toHaveBeenCalledTimes(1);
   });
 
+  it("does not merge a userLocked crown into its spouse's, leaving the marriage and both states untouched", () => {
+    Math.random = () => 0; // succession would always trigger for both states if evaluated
+
+    const priorA = makePriorRuler({
+      i: 0,
+      name: "RulerA",
+      burg: 1,
+      role: "King of Kingland",
+      dynasty: "House A",
+      state: 1,
+      spouse: "RulerB",
+      spouseStatePersistentId: 2,
+      children: undefined // no heir - would go extinct and merge, if not for the lock below
+    });
+    const priorB = {
+      i: 1,
+      name: "RulerB",
+      burg: 2,
+      culture: 1,
+      role: "Duke of Dukeland",
+      importance: "notable",
+      dynasty: "House B",
+      state: 2,
+      statePersistentId: 2,
+      spouse: "RulerA",
+      spouseStatePersistentId: 1,
+      children: [{ name: "BHeir", gender: "m" }]
+    };
+
+    globalThis.options = { year: 1000 } as any;
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1, state: 1 }), makeBurg({ i: 2, state: 2 })],
+      states: [
+        0 as any,
+        makeState({
+          i: 1,
+          name: "Kingland",
+          formName: "Kingdom",
+          capital: 1,
+          lock: true,
+          userLocked: true,
+          diplomacy: ["x", "x", "x"]
+        }),
+        makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, lock: true, diplomacy: ["x", "x", "x"] })
+      ],
+      guilds: [],
+      provinces: [0 as any, makeProvince({ i: 1, state: 1 })],
+      characters: [priorA, priorB],
+      cells: { i: [0, 1, 2, 3], state: [0, 1, 1, 2] },
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    expect(globalThis.pack.states[1].removed).toBeFalsy();
+    expect(globalThis.pack.states[2].removed).toBeFalsy();
+    expect(globalThis.pack.provinces[1].state).toBe(1); // territory never moved
+    expect(Array.from(globalThis.pack.cells.state)).toEqual([0, 1, 1, 2]);
+    // the childless ruler is left exactly as before - not removed, marriage tie intact
+    expect(globalThis.pack.characters![0].removed).toBeFalsy();
+  });
+
   it("still merges into the correct spouse's crown even after that state's .i was renumbered since the marriage was formed", () => {
     Math.random = () => 0; // succession always triggers
 
@@ -1043,6 +1105,80 @@ describe("CharactersModule.applySuccession", () => {
     // the OTHER province is what gets carved off instead
     expect(globalThis.pack.provinces[1].state).not.toBe(primaryRuler!.state);
     expect(globalThis.pack.provinces[1].state).toBe(splinterRuler!.state);
+  });
+
+  it("does not split a userLocked realm, even when a succession crisis would otherwise trigger it", () => {
+    Math.random = () => 0; // succession triggers, and the crisis roll would too, if evaluated
+
+    const priorRuler = makePriorRuler({
+      children: [
+        { name: "ElderSon", gender: "m" },
+        { name: "YoungerSon", gender: "m" }
+      ]
+    });
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1, cell: 1 }), makeBurg({ i: 2, cell: 3 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Testland", formName: "Kingdom", capital: 1, lock: true, userLocked: true })
+      ],
+      guilds: [],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1, burg: 1, name: "Homeshire", fullName: "Homeshire County" }),
+        makeProvince({ i: 2, state: 1, burg: 2, name: "Splitshire", fullName: "Splitshire County" })
+      ],
+      characters: [priorRuler],
+      cells: { i: [0, 1, 2, 3], state: [0, 1, 1, 1], province: [0, 1, 1, 2] },
+      cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Monarchy: "agnatic" } }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    // no splinter state was created, and both provinces stayed with the one realm
+    expect(globalThis.pack.states).toHaveLength(2);
+    expect(globalThis.pack.provinces[1].state).toBe(1);
+    expect(globalThis.pack.provinces[2].state).toBe(1);
+    const splinterRuler = globalThis.pack.characters!.find((c: any) => c.name === "YoungerSon");
+    expect(splinterRuler).toBeUndefined();
+  });
+
+  it("never carves away an individually locked province, splitting off an unlocked one instead", () => {
+    Math.random = () => 0; // succession triggers, and so does the crisis roll
+
+    const priorRuler = makePriorRuler({
+      children: [
+        { name: "ElderSon", gender: "m" },
+        { name: "YoungerSon", gender: "m" }
+      ]
+    });
+
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1, cell: 1 }), makeBurg({ i: 2, cell: 3 }), makeBurg({ i: 3, cell: 4 })],
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Kingdom", capital: 1, lock: true })],
+      guilds: [],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1, burg: 1, name: "Homeshire", fullName: "Homeshire County" }), // capital
+        makeProvince({ i: 2, state: 1, burg: 2, name: "Lockedshire", fullName: "Lockedshire County", lock: true }),
+        makeProvince({ i: 3, state: 1, burg: 3, name: "Splitshire", fullName: "Splitshire County" })
+      ],
+      characters: [priorRuler],
+      cells: { i: [0, 1, 2, 3, 4], state: [0, 1, 1, 1, 1], province: [0, 1, 1, 2, 3] },
+      cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Monarchy: "agnatic" } }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    const primaryRuler = globalThis.pack.characters!.find((c: any) => c.name === "ElderSon");
+    const splinterRuler = globalThis.pack.characters!.find((c: any) => c.name === "YoungerSon");
+    expect(splinterRuler).toBeDefined();
+
+    // the locked province never leaves the parent state, even though it isn't the capital's own
+    expect(globalThis.pack.provinces[2].state).toBe(primaryRuler!.state);
+    // the unlocked province is what gets carved off instead
+    expect(globalThis.pack.provinces[3].state).toBe(splinterRuler!.state);
   });
 
   it("does not split a realm with fewer than two provinces", () => {

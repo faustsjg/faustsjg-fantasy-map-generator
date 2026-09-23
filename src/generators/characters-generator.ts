@@ -453,9 +453,6 @@ class CharactersModule {
   // a childless ruler married into another crown: their realm doesn't pass to a stranger, it
   // merges into their spouse's - the smaller crown's territory, provinces and burgs transfer, and
   // the spouse's ruler (already resolved this era) reigns over both
-  // TODO: same lock-immunity treatment as wars-generator.ts's annex()/transferProvince() and
-  // rebellions-generator.ts's resolve() - a userLocked state isn't currently protected from being
-  // absorbed here. Not implemented yet; wasn't asked for, flagged as a same-shape follow-up.
   private resolveMarriageMerge(
     state: State,
     prior: Character,
@@ -463,6 +460,11 @@ class CharactersModule {
     rulerByState: Map<number, number>
   ): { survivor: State; absorbedName: string } | null {
     if (prior.spouseStatePersistentId === undefined) return null;
+    // a userLocked realm is fully immune to being absorbed - same reasoning as wars-generator.ts's
+    // annex() checking the defender's userLocked, not the surviving crown's: locking only protects,
+    // it doesn't stop a state from marrying in and absorbing someone else. The marriage tie and the
+    // childless ruler are left exactly as they are; the next era's extinctions loop reconsiders it.
+    if (state.userLocked) return null;
 
     // matched by persistentId, not the raw state.i the marriage tie was formed with - that .i may
     // have been renumbered one or more eras ago, while this ruler kept ruling unchanged (a marriage
@@ -510,10 +512,6 @@ class CharactersModule {
   // the inverse of a merge: carves roughly half of the realm's provinces into a brand new state
   // for the passed-over sibling, a cadet branch of the same house. Needs at least 2 provinces to
   // mean anything - a single-province realm just isn't divisible this way, so it's left alone
-  // TODO: same lock-immunity treatment as wars-generator.ts's annex()/transferProvince() and
-  // rebellions-generator.ts's resolve() - a userLocked state or a locked province isn't currently
-  // protected from being carved up here. Not implemented yet; wasn't asked for, flagged as a
-  // same-shape follow-up.
   private trySplitRealm(
     state: State,
     primaryRulerIndex: number,
@@ -521,6 +519,10 @@ class CharactersModule {
     characters: Character[],
     rulerByState: Map<number, number>
   ): boolean {
+    // a userLocked realm is never split up - same reasoning as rebellions-generator.ts's resolve()
+    // checking state.userLocked before letting any of its provinces secede
+    if (state.userLocked) return false;
+
     const provinces = (pack.provinces ?? []).filter(
       province => province.i && !province.removed && province.state === state.i
     );
@@ -529,11 +531,14 @@ class CharactersModule {
     // the capital's own province must never end up in the splinter - array position reflects
     // when each province was first created (its state's own original generation pass), not who
     // currently rules it, so after any war annexation an older, lower-indexed conquered province
-    // can sort before this state's own (newer, higher-indexed) capital province in this filter
+    // can sort before this state's own (newer, higher-indexed) capital province in this filter.
+    // Individually locked provinces are excluded too, so a non-locked realm can still shield
+    // specific provinces from ever landing in a splinter (same idea as wars-generator.ts's annex()
+    // filtering .lock out of its own border-province selection).
     const capitalBurg = pack.burgs[state.capital];
     const capitalProvinceId = capitalBurg ? pack.cells.province?.[capitalBurg.cell] : undefined;
-    const splinterableProvinces = provinces.filter(province => province.i !== capitalProvinceId);
-    if (!splinterableProvinces.length) return false; // nothing to give away besides the capital itself
+    const splinterableProvinces = provinces.filter(province => province.i !== capitalProvinceId && !province.lock);
+    if (!splinterableProvinces.length) return false; // nothing left to give away
 
     const takeCount = Math.min(splinterableProvinces.length, Math.max(1, Math.floor(provinces.length / 2)));
     const splinterProvinces = splinterableProvinces.slice(splinterableProvinces.length - takeCount);
