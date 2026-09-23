@@ -89,30 +89,46 @@ class WarsModule {
     const takeCount = Math.max(1, Math.ceil(border.length * ANNEXATION_SHARE));
     for (const province of border.slice(0, takeCount)) this.transferProvince(province, attacker);
 
-    // losing the capital, or every last province, ends the state - the rest is absorbed too. A
-    // direct sweep by state id (not just by province membership) matters here: a state can hold
-    // cells that belong to no province at all (unclaimed wilderness), and those would otherwise be
-    // left pointing at a now-removed state once it's gone
+    // losing the capital, or every last (unlocked) province, ends the state - the rest is absorbed
+    // too. A direct sweep by state id (not just by province membership) matters here: a state can
+    // hold cells that belong to no province at all (unclaimed wilderness), and those would
+    // otherwise be left pointing at a now-removed state once it's gone
     const stillHasCapital = pack.burgs[defender.capital]?.state === defender.i;
     const stillHasProvince = (pack.provinces ?? []).some(p => p.i && !p.removed && p.state === defender.i);
     if (!stillHasCapital || !stillHasProvince) {
+      // a locked province never changes hands, same guarantee transferProvince() gives the
+      // border-taking loop above - collect which of the defender's remaining cells belong to one,
+      // so the sweep below can skip exactly those (unclaimed wilderness has no province at all,
+      // i.e. cells.province 0, which is never in this set, so it still transfers as before)
+      const lockedProvinceIds = new Set(
+        (pack.provinces ?? []).filter(p => p.i && !p.removed && p.state === defender.i && p.lock).map(p => p.i)
+      );
+
       // burgs are matched against cells.state (the source of truth), before cells.state itself
       // gets reassigned below - matching against burg.state instead would silently skip (and
       // permanently propagate) any burg that had already drifted out of sync
       for (const burg of pack.burgs) {
-        if (pack.cells.state[burg.cell] === defender.i) burg.state = attacker.i;
+        if (pack.cells.state[burg.cell] !== defender.i) continue;
+        if (lockedProvinceIds.has(pack.cells.province?.[burg.cell])) continue;
+        burg.state = attacker.i;
       }
       for (const cellId of pack.cells.i) {
-        if (pack.cells.state[cellId] === defender.i) pack.cells.state[cellId] = attacker.i;
+        if (pack.cells.state[cellId] !== defender.i) continue;
+        if (lockedProvinceIds.has(pack.cells.province?.[cellId])) continue;
+        pack.cells.state[cellId] = attacker.i;
       }
       for (const province of pack.provinces ?? []) {
-        if (province.i && !province.removed && province.state === defender.i) {
+        if (province.i && !province.removed && province.state === defender.i && !province.lock) {
           province.state = attacker.i;
           province.annexedYear = options.year;
         }
       }
-      defender.removed = true;
-      return { changed: true, absorbedName: defender.name };
+
+      // still not truly gone if a locked province held onto some of its territory - a rump state,
+      // diminished but not erased, rather than removed with a locked province orphaned under it
+      const stillOwnsAnything = (pack.provinces ?? []).some(p => p.i && !p.removed && p.state === defender.i);
+      if (!stillOwnsAnything) defender.removed = true;
+      return { changed: true, absorbedName: stillOwnsAnything ? undefined : defender.name };
     }
 
     return { changed: true };

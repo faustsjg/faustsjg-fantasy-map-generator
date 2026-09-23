@@ -22,6 +22,7 @@ import { Emblems } from "@/generators/emblems-generator";
 import { getMilitaryRatio, getTroopsPerArea } from "@/generators/military-generator";
 import { getNextPersistentId } from "@/generators/persistent-id";
 import type { Province } from "@/generators/provinces-generator";
+import { buildNewStateDiplomacy, extendDiplomacyForNewState } from "@/generators/state-diplomacy";
 import type { State } from "@/generators/states-generator";
 import { getRandomColor, minmax, P } from "@/utils";
 
@@ -60,6 +61,10 @@ class RebellionsModule {
     for (const state of validStates) {
       const provinces = (pack.provinces ?? []).filter(p => p.i && !p.removed && p.state === state.i);
       if (provinces.length < 2) continue; // nothing left to secede from
+      // a state the user locked is immune to secession outright - checked once here rather than
+      // inside the per-province loop below, since it can't change mid-loop and this also skips the
+      // capital/military lookups just below for nothing
+      if (state.userLocked) continue;
 
       const capitalBurg = pack.burgs[state.capital];
       if (!capitalBurg?.i) continue;
@@ -74,10 +79,7 @@ class RebellionsModule {
 
       for (const province of provinces) {
         if (province.i === capitalProvinceId) continue; // the capital itself never rebels against its own crown
-        // a locked province, or a state the user locked, is immune to secession - state.userLocked
-        // (not the raw .lock applySuccession() also sets from this era's survival roll) so a state
-        // that merely won this era's coin flip doesn't incidentally become immune too
-        if (province.lock || state.userLocked) continue;
+        if (province.lock) continue; // a locked province is individually immune to secession too
 
         const sameStateNeighbors = this.countSameStateNeighbors(province, provinceAdjacency);
         const chance = this.getUnrestChance(
@@ -177,14 +179,9 @@ class RebellionsModule {
     // the parent: editing either one's shield/position afterward would silently edit both
     const coa = Emblems.generate(state.coa, 0.4, null, state.type);
     coa.shield = state.coa?.shield;
-    // states-generator.ts's own generateDiplomacy() only runs once at the start of the era, before
-    // this state exists - without its own relations array (one entry per state, "x" for itself),
-    // anything that later reads or writes state.diplomacy[i] for every state (declaring another
-    // province's independence, the Diplomacy editor) throws on this one until the next era's
-    // regeneration rebuilds it properly. Freshly hostile to the crown it just broke from, neutral
-    // to everyone else - matches declareProvinceIndependence()'s own reasoning for the same event.
-    const diplomacy = pack.states.map(s => (!s.i || s.removed ? "x" : s.i === state.i ? "Enemy" : "Neutral"));
-    diplomacy.push("x");
+    // freshly hostile to the crown it just broke from, neutral to everyone else - matches
+    // declareProvinceIndependence()'s own reasoning for the same event (see buildNewStateDiplomacy())
+    const diplomacy = buildNewStateDiplomacy(state.i, "Enemy");
     const newState: State = {
       i: newStateId,
       persistentId: getNextPersistentId(),
@@ -205,10 +202,7 @@ class RebellionsModule {
     };
     newState.fullName = `${newState.formName} of ${newState.name} (rebelled against ${state.name})`;
     pack.states.push(newState);
-    for (const s of pack.states) {
-      if (!s.i || s.removed || s.i === newStateId || !s.diplomacy) continue;
-      s.diplomacy[newStateId] = s.i === state.i ? "Enemy" : "Neutral";
-    }
+    extendDiplomacyForNewState(newStateId, state.i, "Enemy");
     // states-generator.ts's and provinces-generator.ts's own capital bookkeeping (stale-capital
     // cleanup, capital-first province-seat sorting) relies on this flag - without it, a later era's
     // regeneration doesn't know this burg is already someone's capital and can hand it to another state

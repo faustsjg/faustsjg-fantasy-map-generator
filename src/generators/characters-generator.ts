@@ -7,6 +7,7 @@ import { getNextPersistentId } from "@/generators/persistent-id";
 import { getRandomColor, minmax, P, ra, rand, rw, withAnnotations } from "@/utils";
 import type { Burg } from "./burgs-generator";
 import type { Province } from "./provinces-generator";
+import { buildNewStateDiplomacy, extendDiplomacyForNewState } from "./state-diplomacy";
 import type { State } from "./states-generator";
 
 export interface Child {
@@ -465,6 +466,12 @@ class CharactersModule {
     // it doesn't stop a state from marrying in and absorbing someone else. The marriage tie and the
     // childless ruler are left exactly as they are; the next era's extinctions loop reconsiders it.
     if (state.userLocked) return null;
+    // unlike trySplitRealm() (a partial carve-up, where shielding one province and still splitting
+    // the rest makes sense), a marriage merger is all-or-nothing - "uniting the crown" while one
+    // locked province stays orphaned under the now-dead state doesn't fit the narrative, and
+    // bailing out only after the ruler/liege mutations below would leave those half-applied. So a
+    // single locked province blocks the whole merger, checked before anything else changes.
+    if ((pack.provinces ?? []).some(p => p?.i && !p.removed && p.state === state.i && p.lock)) return null;
 
     // matched by persistentId, not the raw state.i the marriage tie was formed with - that .i may
     // have been renumbered one or more eras ago, while this ruler kept ruling unchanged (a marriage
@@ -554,14 +561,9 @@ class CharactersModule {
     // edit both (see rebellions-generator.ts's secede(), which shares this exact reasoning)
     const coa = Emblems.generate(state.coa, 0.4, null, state.type);
     coa.shield = state.coa?.shield;
-    // states-generator.ts's own generateDiplomacy() only runs once at the start of the era, before
-    // this state exists - without its own relations array (one entry per state, "x" for itself),
-    // anything that later reads or writes state.diplomacy[i] for every state (declaring another
-    // province's independence, the Diplomacy editor) throws on this one until the next era's
-    // regeneration rebuilds it properly. A peaceful sibling split, unlike a rebellion, so friendly
-    // to the realm it split from rather than hostile - same house, a cadet branch.
-    const diplomacy = pack.states.map(s => (!s.i || s.removed ? "x" : s.i === state.i ? "Friendly" : "Neutral"));
-    diplomacy.push("x");
+    // a peaceful sibling split, unlike a rebellion, so friendly to the realm it split from rather
+    // than hostile - same house, a cadet branch (see buildNewStateDiplomacy())
+    const diplomacy = buildNewStateDiplomacy(state.i, "Friendly");
     const newState: State = {
       i: newStateId,
       persistentId: getNextPersistentId(),
@@ -584,10 +586,7 @@ class CharactersModule {
     // splinter state, and keeps this module free of a cross-generator dependency
     newState.fullName = `${newState.formName} of ${newState.name}`;
     pack.states.push(newState);
-    for (const s of pack.states) {
-      if (!s.i || s.removed || s.i === newStateId || !s.diplomacy) continue;
-      s.diplomacy[newStateId] = s.i === state.i ? "Friendly" : "Neutral";
-    }
+    extendDiplomacyForNewState(newStateId, state.i, "Friendly");
     // states-generator.ts's own capital bookkeeping (stale-capital cleanup, capital-first
     // province-seat sorting) relies on this flag - without it, a later era's regeneration doesn't
     // know this burg is already someone's capital and can hand it to another state

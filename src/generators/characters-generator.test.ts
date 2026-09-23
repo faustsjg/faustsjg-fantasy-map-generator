@@ -684,6 +684,63 @@ describe("CharactersModule.applySuccession", () => {
     expect(globalThis.pack.characters![0].removed).toBeFalsy();
   });
 
+  it("blocks the whole merger when even one of the absorbed state's provinces is individually locked", () => {
+    Math.random = () => 0; // succession would always trigger for both states if evaluated
+
+    const priorA = makePriorRuler({
+      i: 0,
+      name: "RulerA",
+      burg: 1,
+      role: "King of Kingland",
+      dynasty: "House A",
+      state: 1,
+      spouse: "RulerB",
+      spouseStatePersistentId: 2,
+      children: undefined // no heir - would go extinct and merge, if not for the locked province below
+    });
+    const priorB = {
+      i: 1,
+      name: "RulerB",
+      burg: 2,
+      culture: 1,
+      role: "Duke of Dukeland",
+      importance: "notable",
+      dynasty: "House B",
+      state: 2,
+      statePersistentId: 2,
+      spouse: "RulerA",
+      spouseStatePersistentId: 1,
+      children: [{ name: "BHeir", gender: "m" }]
+    };
+
+    globalThis.options = { year: 1000 } as any;
+    globalThis.pack = {
+      burgs: [0 as any, makeBurg({ i: 1, state: 1 }), makeBurg({ i: 2, state: 2 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, lock: true, diplomacy: ["x", "x", "x"] }),
+        makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, lock: true, diplomacy: ["x", "x", "x"] })
+      ],
+      guilds: [],
+      // Kingland itself isn't userLocked, but its only province is - a marriage merger is
+      // all-or-nothing, so this alone must block the merger entirely, not just shield this province
+      provinces: [0 as any, makeProvince({ i: 1, state: 1, lock: true })],
+      characters: [priorA, priorB],
+      cells: { i: [0, 1, 2, 3], state: [0, 1, 1, 2] },
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    expect(globalThis.pack.states[1].removed).toBeFalsy();
+    expect(globalThis.pack.states[2].removed).toBeFalsy();
+    expect(globalThis.pack.provinces[1].state).toBe(1); // territory never moved
+    expect(Array.from(globalThis.pack.cells.state)).toEqual([0, 1, 1, 2]);
+    expect(globalThis.pack.burgs[1].state).toBe(1);
+    // the childless ruler is left exactly as before - not removed, marriage tie intact
+    expect(globalThis.pack.characters![0].removed).toBeFalsy();
+  });
+
   it("still merges into the correct spouse's crown even after that state's .i was renumbered since the marriage was formed", () => {
     Math.random = () => 0; // succession always triggers
 

@@ -102,6 +102,36 @@ describe("WarsModule.resolveCampaigns", () => {
     expect(attacker.fullName).toBe("Bigland (absorbed Smallland)");
   });
 
+  it("keeps a locked province through a full collapse, leaving the defender as a diminished rump state", () => {
+    const attacker = makeState({ i: 1, campaigns: [{ name: "War", start: 1000, attacker: 1, defender: 2 }] });
+    const defender = makeState({ i: 2, name: "Smallland", area: 5, expansionism: 1, capital: 2, campaigns: [] });
+
+    globalThis.pack = {
+      states: [0 as any, attacker, defender],
+      burgs: [0 as any, { i: 1, cell: 1, state: 1 }, { i: 2, cell: 2, state: 2 }, { i: 3, cell: 3, state: 2 }],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1 }), // attacker's own province
+        makeProvince({ i: 2, state: 2 }), // the capital's own province, borders the attacker
+        makeProvince({ i: 3, state: 2, lock: true }) // locked, isolated - not even up for consideration
+      ],
+      cells: { i: [0, 1, 2, 3], c: [[], [2], [1], []], state: [0, 1, 2, 2], province: [0, 1, 2, 3] }
+    } as any;
+
+    Wars.resolveCampaigns();
+
+    // the capital's province falls, exactly as an unlocked defender's would
+    expect(globalThis.pack.provinces[2].state).toBe(1);
+    expect(globalThis.pack.burgs[2].state).toBe(1);
+    // the locked province never changes hands, even though the state around it collapsed
+    expect(globalThis.pack.provinces[3].state).toBe(2);
+    expect(globalThis.pack.burgs[3].state).toBe(2);
+    expect(globalThis.pack.cells.state[3]).toBe(2);
+    // it still owns that one province, so it's diminished, not erased
+    expect(defender.removed).toBeFalsy();
+    expect(attacker.fullName).not.toContain("absorbed");
+  });
+
   it("leaves a userLocked defender fully untouched, even when it would otherwise be fully absorbed", () => {
     const attacker = makeState({ i: 1, campaigns: [{ name: "War", start: 1000, attacker: 1, defender: 2 }] });
     const defender = makeState({
