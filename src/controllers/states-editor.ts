@@ -419,9 +419,7 @@ function renderStatesPage(view: TableView<State>): void {
         <span data-tip="Locate the state" class="icon-target"></span>
         <span data-tip="Toggle state focus" class="icon-pin ${focused ? "" : " inactive"}"></span>
         <span data-tip="View the ruling dynasty and line of succession" class="icon-users"></span>
-        <span data-tip="Lock the state to protect it from re-generation" class="icon-lock${
-          s.lock ? "" : "-open"
-        }"></span>
+        <span data-tip="Lock the state" class="icon-lock${s.lock ? "" : "-open"}"></span>
         <span data-tip="Remove the state" class="icon-trash-empty"></span>
       </div>
     </div>`;
@@ -961,6 +959,12 @@ function toggleFog(state: number, cl: DOMTokenList): void {
 
 async function stateRemovePrompt(state: number): Promise<void> {
   if (customization) return;
+  // userLocked, not the raw .lock applySuccession() also sets from this era's survival roll - a
+  // state that merely won this era's coin flip shouldn't become un-removable by accident
+  if (pack.states[state].userLocked) {
+    tip("Cannot remove a locked state. Unlock it first", false, "error");
+    return;
+  }
 
   const regeneration = await Controllers.ErasEditor.pastEraRegeneration();
   const message = regeneration
@@ -1691,6 +1695,14 @@ function openStateMergeDialog(): void {
           .filter(stateId => stateId !== rulingStateId);
         if (!statesToMerge.length) {
           tip("Please select several states to merge", false, "error");
+          return;
+        }
+        // a locked state being merged in (absorbed) is what needs protecting - being the ruling
+        // state that survives and absorbs the others is unaffected by its own lock, same asymmetry
+        // as wars-generator.ts's annex() only checking the defender's lock, not the attacker's
+        const lockedState = statesToMerge.map(id => pack.states[id]).find(s => s.userLocked);
+        if (lockedState) {
+          tip(`Cannot merge ${lockedState.name} - it's locked. Unlock it first`, false, "error");
           return;
         }
 

@@ -822,6 +822,17 @@ function removeSelectedBurg(): void {
         }
       }
     });
+  } else if (burg.lock) {
+    alertMessage.innerHTML = /* html */ `You cannot remove a locked burg. Unlock it first`;
+    $("#alert").dialog({
+      resizable: false,
+      title: "Remove burg",
+      buttons: {
+        Ok: function (this: HTMLElement) {
+          $(this).dialog("close");
+        }
+      }
+    });
   } else {
     confirmationDialog({
       title: "Remove burg",

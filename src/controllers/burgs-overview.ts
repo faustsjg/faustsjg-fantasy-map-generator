@@ -456,6 +456,10 @@ function triggerBurgRemove(this: HTMLElement): void {
     tip("You cannot remove the capital. Please change the state capital first", false, "error");
     return;
   }
+  if (pack.burgs[burgId].lock) {
+    tip("Cannot remove a locked burg. Unlock it first", false, "error");
+    return;
+  }
 
   confirmationDialog({
     title: "Remove burg",

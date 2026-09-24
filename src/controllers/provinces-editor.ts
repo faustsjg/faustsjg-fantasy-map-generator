@@ -439,6 +439,10 @@ function declareProvinceIndependence(provinceId: number): [number, number] | und
   const province = provinces[provinceId];
   const { name, burg: burgId, burgs: provinceBurgs } = province;
 
+  if (province.lock) {
+    tip("Cannot declare independence of a locked province. Unlock it first", false, "error");
+    return;
+  }
   if (provinceBurgs!.some(b => burgs[b].capital)) {
     tip("Cannot declare independence of a province having capital burg. Please change capital first", false, "error");
     return;
@@ -635,6 +639,20 @@ function toggleFog(p: number, cl: DOMTokenList): void {
 }
 
 function removeProvince(p: number): void {
+  if (pack.provinces[p].lock) {
+    alertMessage.innerHTML = /* html */ `You cannot remove a locked province. Unlock it first`;
+    $("#alert").dialog({
+      resizable: false,
+      title: "Remove province",
+      buttons: {
+        Ok: function (this: HTMLElement) {
+          $(this).dialog("close");
+        }
+      }
+    });
+    return;
+  }
+
   alertMessage.innerHTML = /* html */ `Are you sure you want to remove the province? <br />This action cannot be reverted`;
   $("#alert").dialog({
     resizable: false,
@@ -1047,10 +1065,10 @@ function showChart(): void {
 async function triggerProvincesRelease(): Promise<void> {
   const regeneration = await Controllers.ErasEditor.pastEraRegeneration();
   const message = regeneration
-    ? `Are you sure you want to release all provinces? It will turn all separable provinces into independent states. Capital province and provinces without any burgs will stay as they are. ${regeneration.sentence}.`
+    ? `Are you sure you want to release all provinces? It will turn all separable provinces into independent states. Capital province, locked provinces, and provinces without any burgs will stay as they are. ${regeneration.sentence}.`
     : `Are you sure you want to release all provinces?
         </br>It will turn all separable provinces into independent states.
-        </br>Capital province and provinces without any burgs will state as they are`;
+        </br>Capital province, locked provinces, and provinces without any burgs will stay as they are`;
 
   confirmationDialog({
     title: "Release provinces",
@@ -1062,6 +1080,7 @@ async function triggerProvincesRelease(): Promise<void> {
 
       getProvincesData().forEach(province => {
         if (!province.burg) return;
+        if (province.lock) return; // silently skipped, same as the capital/no-burg cases above
         if (province.burg === pack.states[province.state].capital) return;
         if (province.burgs!.some(burgId => pack.burgs[burgId].capital)) return;
 
