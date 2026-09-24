@@ -130,6 +130,11 @@ describe("WarsModule.resolveCampaigns", () => {
     // it still owns that one province, so it's diminished, not erased
     expect(defender.removed).toBeFalsy();
     expect(attacker.fullName).not.toContain("absorbed");
+    // and it moves its capital to the burg it still holds, instead of pointing at the attacker's
+    expect(defender.capital).toBe(3);
+    expect((defender as any).center).toBe(3);
+    expect(globalThis.pack.burgs[3].capital).toBe(1);
+    expect(globalThis.pack.burgs[2].capital).toBe(0);
   });
 
   it("leaves a locked burg behind as an enclave of the defender when its province is annexed", () => {
@@ -221,6 +226,9 @@ describe("WarsModule.resolveCampaigns", () => {
     expect(Array.from(globalThis.pack.cells.state)).toEqual([0, 1, 1, 2]);
     expect(defender.removed).toBeFalsy();
     expect(attacker.fullName).not.toContain("absorbed");
+    // the locked burg becomes the rump state's new capital
+    expect(defender.capital).toBe(3);
+    expect(globalThis.pack.burgs[3].capital).toBe(1);
   });
 
   it("leaves a userLocked defender fully untouched, even when it would otherwise be fully absorbed", () => {

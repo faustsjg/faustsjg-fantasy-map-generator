@@ -227,12 +227,17 @@ class ErasModule {
     }
 
     // small, non-capital settlements have a chance to be abandoned each era;
-    // capitals and locked burgs are never pruned. A surviving burg's name can
-    // drift (this is exactly the Barcino -> Barcelona case), unless it's locked.
+    // capitals, province seats and locked burgs are never pruned. A province that
+    // isn't regenerated this era (locked, or its state survived) keeps its seat
+    // burg as-is, so abandoning that seat would leave the province pointing at a
+    // removed burg for good. A surviving burg's name can drift (this is exactly the
+    // Barcino -> Barcelona case), unless it's locked.
+    const provinceSeats = new Set((pack.provinces ?? []).filter(p => p?.i && !p.removed).map(p => p.burg));
     for (const burg of burgs) {
       if (!burg.i || burg.removed) continue;
 
-      if (!burg.capital && !burg.lock && (burg.population ?? 0) < 3 && P(0.15)) {
+      const prunable = !burg.capital && !burg.lock && !provinceSeats.has(burg.i);
+      if (prunable && (burg.population ?? 0) < 3 && P(0.15)) {
         burg.removed = true;
         // cells.burg is the source of truth other systems (province generation's "do not
         // overwrite burgs" check, load.ts's own data-integrity pass) read as "is there a burg

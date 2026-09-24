@@ -256,6 +256,14 @@ describe("ErasModule.generate", () => {
     expect(globalThis.pack.cells.burg[1]).toBe(1);
   });
 
+  it("never abandons a province's seat burg, even a small non-capital one that would otherwise be pruned", () => {
+    // burg 2 (population 1, non-capital) is pruned in the test above - but here it seats a province
+    globalThis.pack.provinces = [0 as any, { i: 1, state: 2, burg: 2, name: "Smallshire" }];
+    ErasModule.generate(2, 100);
+    expect(globalThis.pack.burgs[2].removed).toBeUndefined();
+    expect(globalThis.pack.cells.burg[3]).toBe(2);
+  });
+
   it("never abandons a locked burg, even a small non-capital one that would otherwise be pruned", () => {
     globalThis.pack.burgs[2].lock = true; // population 1, non-capital - pruned in the test above
     ErasModule.generate(2, 100);

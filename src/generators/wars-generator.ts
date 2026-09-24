@@ -143,11 +143,29 @@ class WarsModule {
       // - a rump state, diminished but not erased, rather than removed with something orphaned under it
       const stillOwnsAnything =
         lockedBurgCells.size > 0 || (pack.provinces ?? []).some(p => p.i && !p.removed && p.state === defender.i);
-      if (!stillOwnsAnything) defender.removed = true;
-      return { changed: true, absorbedName: stillOwnsAnything ? undefined : defender.name };
+      if (!stillOwnsAnything) {
+        defender.removed = true;
+        return { changed: true, absorbedName: defender.name };
+      }
+      if (pack.burgs[defender.capital]?.state !== defender.i) this.relocateCapital(defender);
+      return { changed: true };
     }
 
     return { changed: true };
+  }
+
+  // A rump state that lost its capital moves its seat to the largest burg it still holds. The old
+  // capital burg now belongs to the attacker, which already has its own capital.
+  private relocateCapital(state: State): void {
+    const oldCapital = pack.burgs[state.capital];
+    const candidates = pack.burgs.filter(b => b.i && !b.removed && pack.cells.state[b.cell] === state.i);
+    if (!candidates.length) return;
+    const newCapital = candidates.reduce((a, b) => ((b.population ?? 0) > (a.population ?? 0) ? b : a));
+
+    if (oldCapital?.i) oldCapital.capital = 0;
+    newCapital.capital = 1;
+    state.capital = newCapital.i;
+    state.center = newCapital.cell;
   }
 
   private transferProvince(province: Province, to: State): void {

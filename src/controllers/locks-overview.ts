@@ -149,14 +149,15 @@ function getLockedRows(): LockedRow[] {
   const provinces: LockedRow[] = (pack.provinces ?? [])
     .filter(p => p?.i && !p.removed && p.lock)
     .map(p => {
-      const burg = pack.burgs[p.burg];
+      // wild-land provinces have no seat burg (burg 0) - zoom to their center cell instead
+      const [x, y] = p.burg ? [pack.burgs[p.burg].x, pack.burgs[p.burg].y] : pack.cells.p[p.center];
       return {
         kind: "province",
         id: p.i,
         name: p.fullName ?? p.name,
         parent: pack.states[p.state]?.name ?? "",
-        x: burg.x,
-        y: burg.y
+        x,
+        y
       };
     });
 
