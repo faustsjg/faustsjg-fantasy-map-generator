@@ -132,6 +132,97 @@ describe("WarsModule.resolveCampaigns", () => {
     expect(attacker.fullName).not.toContain("absorbed");
   });
 
+  it("leaves a locked burg behind as an enclave of the defender when its province is annexed", () => {
+    const attacker = makeState({ i: 1, campaigns: [{ name: "War", start: 1000, attacker: 1, defender: 2 }] });
+    const defender = makeState({ i: 2, name: "Smallland", area: 10, expansionism: 1, capital: 2, campaigns: [] });
+
+    globalThis.pack = {
+      states: [0 as any, attacker, defender],
+      burgs: [
+        0 as any,
+        { i: 1, cell: 1, state: 1 },
+        { i: 2, cell: 4, state: 2 }, // defender's capital, in the interior province
+        { i: 3, cell: 3, state: 2, lock: true }, // locked, inside the bordering province
+        { i: 4, cell: 2, state: 2 } // the bordering province's own (unlocked) seat
+      ],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1, burg: 1 }),
+        makeProvince({ i: 2, state: 2, burg: 4 }), // borders the attacker
+        makeProvince({ i: 3, state: 2, burg: 2 })
+      ],
+      cells: {
+        i: [0, 1, 2, 3, 4],
+        c: [[], [2], [1, 3], [2, 4], [3]],
+        state: [0, 1, 2, 2, 2],
+        province: [0, 1, 2, 2, 3]
+      }
+    } as any;
+
+    Wars.resolveCampaigns();
+
+    expect(globalThis.pack.provinces[2].state).toBe(1);
+    expect(globalThis.pack.burgs[4].state).toBe(1);
+    // the locked burg's cell stays with the defender, detached from the now-foreign province
+    expect(globalThis.pack.burgs[3].state).toBe(2);
+    expect(Array.from(globalThis.pack.cells.state)).toEqual([0, 1, 1, 2, 2]);
+    expect(globalThis.pack.cells.province[3]).toBe(0);
+  });
+
+  it("never takes a province whose seat burg is locked", () => {
+    const attacker = makeState({ i: 1, campaigns: [{ name: "War", start: 1000, attacker: 1, defender: 2 }] });
+    const defender = makeState({ i: 2, name: "Smallland", area: 10, expansionism: 1, capital: 2, campaigns: [] });
+
+    globalThis.pack = {
+      states: [0 as any, attacker, defender],
+      burgs: [
+        0 as any,
+        { i: 1, cell: 1, state: 1 },
+        { i: 2, cell: 4, state: 2 },
+        { i: 3, cell: 2, state: 2, lock: true }
+      ],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1 }),
+        makeProvince({ i: 2, state: 2, burg: 3 }), // borders the attacker, but its seat burg is locked
+        makeProvince({ i: 3, state: 2 }) // also borders the attacker, unlocked
+      ],
+      cells: { i: [0, 1, 2, 3], c: [[], [2, 3], [1], [1]], state: [0, 1, 2, 2], province: [0, 1, 2, 3] }
+    } as any;
+
+    Wars.resolveCampaigns();
+
+    expect(globalThis.pack.provinces[2].state).toBe(2);
+    expect(globalThis.pack.burgs[3].state).toBe(2);
+    expect(globalThis.pack.provinces[3].state).toBe(1);
+  });
+
+  it("keeps a defender alive as a rump state when only a locked burg survives its collapse", () => {
+    const attacker = makeState({ i: 1, campaigns: [{ name: "War", start: 1000, attacker: 1, defender: 2 }] });
+    const defender = makeState({ i: 2, name: "Smallland", area: 5, expansionism: 1, capital: 2, campaigns: [] });
+
+    globalThis.pack = {
+      states: [0 as any, attacker, defender],
+      burgs: [
+        0 as any,
+        { i: 1, cell: 1, state: 1 },
+        { i: 2, cell: 2, state: 2 },
+        { i: 3, cell: 3, state: 2, lock: true }
+      ],
+      provinces: [0 as any, makeProvince({ i: 1, state: 1 }), makeProvince({ i: 2, state: 2, burg: 2 })],
+      cells: { i: [0, 1, 2, 3], c: [[], [2], [1, 3], [2]], state: [0, 1, 2, 2], province: [0, 1, 2, 2] }
+    } as any;
+
+    Wars.resolveCampaigns();
+
+    // its only province (and capital) fell, but the locked burg held on
+    expect(globalThis.pack.provinces[2].state).toBe(1);
+    expect(globalThis.pack.burgs[3].state).toBe(2);
+    expect(Array.from(globalThis.pack.cells.state)).toEqual([0, 1, 1, 2]);
+    expect(defender.removed).toBeFalsy();
+    expect(attacker.fullName).not.toContain("absorbed");
+  });
+
   it("leaves a userLocked defender fully untouched, even when it would otherwise be fully absorbed", () => {
     const attacker = makeState({ i: 1, campaigns: [{ name: "War", start: 1000, attacker: 1, defender: 2 }] });
     const defender = makeState({

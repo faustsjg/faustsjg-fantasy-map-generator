@@ -18,6 +18,7 @@
 // keeps a realm together even where it has every structural reason to fray, while a thin one
 // makes those same reasons bite harder.
 import { mean } from "d3";
+import { detachLockedBurgs, isSeatLocked } from "@/generators/burg-locks";
 import { Emblems } from "@/generators/emblems-generator";
 import { getMilitaryRatio, getTroopsPerArea } from "@/generators/military-generator";
 import { getNextPersistentId } from "@/generators/persistent-id";
@@ -79,7 +80,9 @@ class RebellionsModule {
 
       for (const province of provinces) {
         if (province.i === capitalProvinceId) continue; // the capital itself never rebels against its own crown
-        if (province.lock) continue; // a locked province is individually immune to secession too
+        // a locked province is individually immune to secession too, and so is one whose seat burg
+        // (the would-be rebel capital) is locked
+        if (province.lock || isSeatLocked(province)) continue;
 
         const sameStateNeighbors = this.countSameStateNeighbors(province, provinceAdjacency);
         const chance = this.getUnrestChance(
@@ -208,6 +211,7 @@ class RebellionsModule {
     // regeneration doesn't know this burg is already someone's capital and can hand it to another state
     seatBurg.capital = 1;
 
+    detachLockedBurgs(province.i); // any other locked burg inside stays with the crown as an enclave
     province.state = newStateId;
     province.annexedYear = undefined; // independent now - no foreign crown to be "recently annexed" by
     for (const cellId of pack.cells.i) {

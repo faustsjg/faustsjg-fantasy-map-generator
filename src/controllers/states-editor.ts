@@ -965,6 +965,11 @@ async function stateRemovePrompt(state: number): Promise<void> {
     tip("Cannot remove a locked state. Unlock it first", false, "error");
     return;
   }
+  const lockedBurg = pack.burgs.find(b => b.i && !b.removed && b.lock && pack.cells.state[b.cell] === state);
+  if (lockedBurg) {
+    tip(`Cannot remove the state: its burg ${lockedBurg.name} is locked. Unlock it first`, false, "error");
+    return;
+  }
 
   const regeneration = await Controllers.ErasEditor.pastEraRegeneration();
   const message = regeneration
@@ -1703,6 +1708,13 @@ function openStateMergeDialog(): void {
         const lockedState = statesToMerge.map(id => pack.states[id]).find(s => s.userLocked);
         if (lockedState) {
           tip(`Cannot merge ${lockedState.name} - it's locked. Unlock it first`, false, "error");
+          return;
+        }
+        const lockedBurg = pack.burgs.find(
+          b => b.i && !b.removed && b.lock && statesToMerge.includes(pack.cells.state[b.cell])
+        );
+        if (lockedBurg) {
+          tip(`Cannot merge: burg ${lockedBurg.name} is locked. Unlock it first`, false, "error");
           return;
         }
 

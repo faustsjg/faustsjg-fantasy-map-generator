@@ -443,6 +443,10 @@ function declareProvinceIndependence(provinceId: number): [number, number] | und
     tip("Cannot declare independence of a locked province. Unlock it first", false, "error");
     return;
   }
+  if (burgs[burgId]?.lock) {
+    tip(`Cannot declare independence: its seat burg ${burgs[burgId].name} is locked. Unlock it first`, false, "error");
+    return;
+  }
   if (provinceBurgs!.some(b => burgs[b].capital)) {
     tip("Cannot declare independence of a province having capital burg. Please change capital first", false, "error");
     return;
@@ -461,8 +465,10 @@ function declareProvinceIndependence(provinceId: number): [number, number] | und
   Burgs.changeGroup(capital);
   Layers.draw("burgIcons", "labels");
 
-  // move all burgs to a new state
+  // move all burgs to a new state - a locked one stays with the old state as an enclave
+  const lockedBurgCells = new Set(province.burgs!.filter(b => burgs[b].lock).map(b => burgs[b].cell));
   province.burgs!.forEach(b => {
+    if (burgs[b].lock) return;
     burgs[b].state = newStateId;
   });
 
@@ -479,7 +485,7 @@ function declareProvinceIndependence(provinceId: number): [number, number] | und
     .filter(i => cells.province[i] === provinceId)
     .forEach(i => {
       cells.province[i] = 0;
-      cells.state[i] = newStateId;
+      if (!lockedBurgCells.has(i)) cells.state[i] = newStateId;
     });
 
   // update diplomacy and reverse relations
@@ -1065,10 +1071,10 @@ function showChart(): void {
 async function triggerProvincesRelease(): Promise<void> {
   const regeneration = await Controllers.ErasEditor.pastEraRegeneration();
   const message = regeneration
-    ? `Are you sure you want to release all provinces? It will turn all separable provinces into independent states. Capital province, locked provinces, and provinces without any burgs will stay as they are. ${regeneration.sentence}.`
+    ? `Are you sure you want to release all provinces? It will turn all separable provinces into independent states. Capital province, locked provinces (or with a locked seat burg), and provinces without any burgs will stay as they are; other locked burgs stay with their current state. ${regeneration.sentence}.`
     : `Are you sure you want to release all provinces?
         </br>It will turn all separable provinces into independent states.
-        </br>Capital province, locked provinces, and provinces without any burgs will stay as they are`;
+        </br>Capital province, locked provinces (or with a locked seat burg), and provinces without any burgs will stay as they are; other locked burgs stay with their current state`;
 
   confirmationDialog({
     title: "Release provinces",
@@ -1080,7 +1086,8 @@ async function triggerProvincesRelease(): Promise<void> {
 
       getProvincesData().forEach(province => {
         if (!province.burg) return;
-        if (province.lock) return; // silently skipped, same as the capital/no-burg cases above
+        // silently skipped, same as the capital/no-burg cases - a locked seat burg pins its province too
+        if (province.lock || pack.burgs[province.burg]?.lock) return;
         if (province.burg === pack.states[province.state].capital) return;
         if (province.burgs!.some(burgId => pack.burgs[burgId].capital)) return;
 

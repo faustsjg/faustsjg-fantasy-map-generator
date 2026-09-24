@@ -741,6 +741,60 @@ describe("CharactersModule.applySuccession", () => {
     expect(globalThis.pack.characters![0].removed).toBeFalsy();
   });
 
+  it("blocks the whole merger when a burg on the absorbed state's territory is locked", () => {
+    Math.random = () => 0; // succession would always trigger for both states if evaluated
+
+    const priorA = makePriorRuler({
+      i: 0,
+      name: "RulerA",
+      burg: 1,
+      role: "King of Kingland",
+      dynasty: "House A",
+      state: 1,
+      spouse: "RulerB",
+      spouseStatePersistentId: 2,
+      children: undefined // no heir - would go extinct and merge, if not for the locked burg below
+    });
+    const priorB = {
+      i: 1,
+      name: "RulerB",
+      burg: 2,
+      culture: 1,
+      role: "Duke of Dukeland",
+      importance: "notable",
+      dynasty: "House B",
+      state: 2,
+      statePersistentId: 2,
+      spouse: "RulerA",
+      spouseStatePersistentId: 1,
+      children: [{ name: "BHeir", gender: "m" }]
+    };
+
+    globalThis.options = { year: 1000 } as any;
+    globalThis.pack = {
+      // burg 1 sits on Kingland's cell 1 and is locked - an enclave of a state that would no
+      // longer exist after the merger, so the merger can't happen at all
+      burgs: [0 as any, makeBurg({ i: 1, state: 1, lock: true }), makeBurg({ i: 2, cell: 3, state: 2 })],
+      states: [
+        0 as any,
+        makeState({ i: 1, name: "Kingland", formName: "Kingdom", capital: 1, lock: true, diplomacy: ["x", "x", "x"] }),
+        makeState({ i: 2, name: "Dukeland", formName: "Duchy", capital: 2, lock: true, diplomacy: ["x", "x", "x"] })
+      ],
+      guilds: [],
+      provinces: [0 as any, makeProvince({ i: 1, state: 1 })],
+      characters: [priorA, priorB],
+      cells: { i: [0, 1, 2, 3], state: [0, 1, 1, 2] },
+      cultures: [null, { i: 1, name: "Testculture" }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    expect(globalThis.pack.states[1].removed).toBeFalsy();
+    expect(globalThis.pack.provinces[1].state).toBe(1);
+    expect(Array.from(globalThis.pack.cells.state)).toEqual([0, 1, 1, 2]);
+    expect(globalThis.pack.characters![0].removed).toBeFalsy();
+  });
+
   it("still merges into the correct spouse's crown even after that state's .i was renumbered since the marriage was formed", () => {
     Math.random = () => 0; // succession always triggers
 
@@ -1236,6 +1290,51 @@ describe("CharactersModule.applySuccession", () => {
     expect(globalThis.pack.provinces[2].state).toBe(primaryRuler!.state);
     // the unlocked province is what gets carved off instead
     expect(globalThis.pack.provinces[3].state).toBe(splinterRuler!.state);
+  });
+
+  it("leaves a locked burg inside a splinter province behind as an enclave of the parent realm", () => {
+    Math.random = () => 0; // succession triggers, and so does the crisis roll
+
+    const priorRuler = makePriorRuler({
+      children: [
+        { name: "ElderSon", gender: "m" },
+        { name: "YoungerSon", gender: "m" }
+      ]
+    });
+
+    globalThis.pack = {
+      burgs: [
+        0 as any,
+        makeBurg({ i: 1, cell: 1, state: 1 }),
+        makeBurg({ i: 2, cell: 3, state: 1 }),
+        makeBurg({ i: 3, cell: 4, state: 1 }),
+        makeBurg({ i: 4, cell: 5, state: 1, lock: true }) // locked, inside Splitshire but not its seat
+      ],
+      states: [0 as any, makeState({ i: 1, name: "Testland", formName: "Kingdom", capital: 1, lock: true })],
+      guilds: [],
+      provinces: [
+        0 as any,
+        makeProvince({ i: 1, state: 1, burg: 1, name: "Homeshire", fullName: "Homeshire County" }), // capital
+        makeProvince({ i: 2, state: 1, burg: 2, name: "Midshire", fullName: "Midshire County" }),
+        makeProvince({ i: 3, state: 1, burg: 3, name: "Splitshire", fullName: "Splitshire County" })
+      ],
+      characters: [priorRuler],
+      cells: { i: [0, 1, 2, 3, 4, 5], state: [0, 1, 1, 1, 1, 1], province: [0, 1, 1, 2, 3, 3] },
+      cultures: [null, { i: 1, name: "Testculture", successionLawByForm: { Monarchy: "agnatic" } }]
+    } as any;
+
+    Characters.applySuccession(20);
+
+    const primaryRuler = globalThis.pack.characters!.find((c: any) => c.name === "ElderSon");
+    const splinterRuler = globalThis.pack.characters!.find((c: any) => c.name === "YoungerSon");
+    expect(splinterRuler).toBeDefined();
+
+    expect(globalThis.pack.provinces[3].state).toBe(splinterRuler!.state);
+    expect(globalThis.pack.cells.state[4]).toBe(splinterRuler!.state);
+    // the locked burg's cell stays with the parent realm, detached from the splinter's province
+    expect(globalThis.pack.cells.state[5]).toBe(primaryRuler!.state);
+    expect(globalThis.pack.burgs[4].state).toBe(primaryRuler!.state);
+    expect(globalThis.pack.cells.province[5]).toBe(0);
   });
 
   it("does not split a realm with fewer than two provinces", () => {

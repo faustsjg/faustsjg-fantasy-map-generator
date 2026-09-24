@@ -218,20 +218,21 @@ class ErasModule {
 
       // States.defineStateForms() skips locked states, so a surviving name
       // only drifts here; fullName is recomputed from the mutated name and
-      // the untouched form (Kingdom, Duchy...) it already carried.
-      if (state.lock && P(0.35)) {
+      // the untouched form (Kingdom, Duchy...) it already carried. A state the
+      // user locked keeps its name exactly as it is.
+      if (state.lock && !state.userLocked && P(0.35)) {
         state.name = mutateName(state.name);
         state.fullName = window.States.getFullName(state);
       }
     }
 
     // small, non-capital settlements have a chance to be abandoned each era;
-    // capitals are never pruned, but their name can still drift like any
-    // other surviving burg (this is exactly the Barcino -> Barcelona case).
+    // capitals and locked burgs are never pruned. A surviving burg's name can
+    // drift (this is exactly the Barcino -> Barcelona case), unless it's locked.
     for (const burg of burgs) {
       if (!burg.i || burg.removed) continue;
 
-      if (!burg.capital && (burg.population ?? 0) < 3 && P(0.15)) {
+      if (!burg.capital && !burg.lock && (burg.population ?? 0) < 3 && P(0.15)) {
         burg.removed = true;
         // cells.burg is the source of truth other systems (province generation's "do not
         // overwrite burgs" check, load.ts's own data-integrity pass) read as "is there a burg
@@ -241,7 +242,7 @@ class ErasModule {
         continue;
       }
 
-      if (P(0.2)) burg.name = mutateName(burg.name ?? "");
+      if (!burg.lock && P(0.2)) burg.name = mutateName(burg.name ?? "");
     }
   }
 

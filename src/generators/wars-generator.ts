@@ -7,6 +7,7 @@
 // consequence: the stronger side annexes some of the weaker side's bordering provinces, reusing
 // the exact same power comparison and threshold Azgaar already used to decide the war was
 // winnable in the first place.
+import { detachLockedBurgs, isSeatLocked } from "@/generators/burg-locks";
 import type { Province } from "@/generators/provinces-generator";
 import type { State } from "@/generators/states-generator";
 import { gauss, withAnnotations } from "@/utils";
@@ -78,10 +79,12 @@ class WarsModule {
     const defenderProvinces = (pack.provinces ?? []).filter(p => p.i && !p.removed && p.state === defender.i);
     if (!defenderProvinces.length) return { changed: false };
 
-    // a locked province is shielded individually too, even for a defender that isn't itself locked
+    // a locked province is shielded individually too, even for a defender that isn't itself locked -
+    // and so is one whose seat burg is locked, since it can't leave without its own seat
     const border = defenderProvinces.filter(
       p =>
         !p.lock &&
+        !isSeatLocked(p) &&
         [...(provinceAdjacency.get(p.i) ?? [])].some(neighborId => pack.provinces?.[neighborId]?.state === attacker.i)
     );
     if (!border.length) return { changed: false }; // no shared border - a naval or coalition war, nothing to take on land
@@ -100,33 +103,46 @@ class WarsModule {
       // border-taking loop above - collect which of the defender's remaining cells belong to one,
       // so the sweep below can skip exactly those (unclaimed wilderness has no province at all,
       // i.e. cells.province 0, which is never in this set, so it still transfers as before)
+      const isPinned = (p: Province) => p.lock || isSeatLocked(p);
       const lockedProvinceIds = new Set(
-        (pack.provinces ?? []).filter(p => p.i && !p.removed && p.state === defender.i && p.lock).map(p => p.i)
+        (pack.provinces ?? []).filter(p => p.i && !p.removed && p.state === defender.i && isPinned(p)).map(p => p.i)
       );
+      // a locked burg inside a province that does move stays behind as an enclave of the defender
+      for (const province of pack.provinces ?? []) {
+        if (province.i && !province.removed && province.state === defender.i && !isPinned(province)) {
+          detachLockedBurgs(province.i);
+        }
+      }
+      const lockedBurgCells = new Set(
+        pack.burgs.filter(b => b.i && !b.removed && b.lock && pack.cells.state[b.cell] === defender.i).map(b => b.cell)
+      );
+      const staysWithDefender = (cellId: number) =>
+        lockedBurgCells.has(cellId) || lockedProvinceIds.has(pack.cells.province?.[cellId]);
 
       // burgs are matched against cells.state (the source of truth), before cells.state itself
       // gets reassigned below - matching against burg.state instead would silently skip (and
       // permanently propagate) any burg that had already drifted out of sync
       for (const burg of pack.burgs) {
         if (pack.cells.state[burg.cell] !== defender.i) continue;
-        if (lockedProvinceIds.has(pack.cells.province?.[burg.cell])) continue;
+        if (staysWithDefender(burg.cell)) continue;
         burg.state = attacker.i;
       }
       for (const cellId of pack.cells.i) {
         if (pack.cells.state[cellId] !== defender.i) continue;
-        if (lockedProvinceIds.has(pack.cells.province?.[cellId])) continue;
+        if (staysWithDefender(cellId)) continue;
         pack.cells.state[cellId] = attacker.i;
       }
       for (const province of pack.provinces ?? []) {
-        if (province.i && !province.removed && province.state === defender.i && !province.lock) {
+        if (province.i && !province.removed && province.state === defender.i && !isPinned(province)) {
           province.state = attacker.i;
           province.annexedYear = options.year;
         }
       }
 
-      // still not truly gone if a locked province held onto some of its territory - a rump state,
-      // diminished but not erased, rather than removed with a locked province orphaned under it
-      const stillOwnsAnything = (pack.provinces ?? []).some(p => p.i && !p.removed && p.state === defender.i);
+      // still not truly gone if a locked province or a locked burg held onto some of its territory
+      // - a rump state, diminished but not erased, rather than removed with something orphaned under it
+      const stillOwnsAnything =
+        lockedBurgCells.size > 0 || (pack.provinces ?? []).some(p => p.i && !p.removed && p.state === defender.i);
       if (!stillOwnsAnything) defender.removed = true;
       return { changed: true, absorbedName: stillOwnsAnything ? undefined : defender.name };
     }
@@ -135,7 +151,8 @@ class WarsModule {
   }
 
   private transferProvince(province: Province, to: State): void {
-    if (province.lock) return; // locked provinces never change hands, regardless of caller
+    if (province.lock || isSeatLocked(province)) return; // locked provinces never change hands, regardless of caller
+    detachLockedBurgs(province.i); // any other locked burg inside stays behind as an enclave
     province.state = to.i;
     province.annexedYear = options.year; // freshly conquered - a rebellion risk factor, decaying over time
     for (const cellId of pack.cells.i) {

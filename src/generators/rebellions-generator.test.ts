@@ -212,6 +212,35 @@ describe("RebellionsModule.resolve", () => {
     expect(collectStatistics).not.toHaveBeenCalled();
   });
 
+  it("never lets a province secede when its seat burg is locked", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0); // P() always succeeds if evaluated
+    globalThis.pack = makePack();
+    globalThis.pack.burgs[2].lock = true; // province 2's seat
+
+    Rebellions.resolve();
+
+    expect(globalThis.pack.provinces[2].state).toBe(1);
+    expect(globalThis.pack.states).toHaveLength(2);
+  });
+
+  it("leaves a locked burg behind as an enclave of the crown when its province secedes", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0); // P() always succeeds
+    globalThis.pack = makePack();
+    // a second, locked burg inside province 2 (not its seat)
+    globalThis.pack.burgs.push({ i: 3, x: 0, y: 0, cell: 3, culture: 5, state: 1, lock: true } as any);
+    globalThis.pack.cells = { i: [0, 1, 2, 3], province: [0, 1, 2, 2], f: [0, 1, 1, 1], state: [0, 1, 1, 1] } as any;
+
+    Rebellions.resolve();
+
+    const rebelState = globalThis.pack.states[2];
+    expect(globalThis.pack.provinces[2].state).toBe(rebelState.i);
+    expect(globalThis.pack.cells.state[2]).toBe(rebelState.i);
+    // the locked burg stays with the crown, detached from the seceded province
+    expect(globalThis.pack.cells.state[3]).toBe(1);
+    expect(globalThis.pack.burgs[3].state).toBe(1);
+    expect(globalThis.pack.cells.province[3]).toBe(0);
+  });
+
   it("does not evaluate a state with fewer than two provinces", () => {
     vi.spyOn(Math, "random").mockReturnValue(0); // P() would always succeed if it were even called
     globalThis.pack = makePack({ province2Count: 1 });

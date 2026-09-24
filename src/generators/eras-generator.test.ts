@@ -256,6 +256,13 @@ describe("ErasModule.generate", () => {
     expect(globalThis.pack.cells.burg[1]).toBe(1);
   });
 
+  it("never abandons a locked burg, even a small non-capital one that would otherwise be pruned", () => {
+    globalThis.pack.burgs[2].lock = true; // population 1, non-capital - pruned in the test above
+    ErasModule.generate(2, 100);
+    expect(globalThis.pack.burgs[2].removed).toBeUndefined();
+    expect(globalThis.pack.cells.burg[3]).toBe(2);
+  });
+
   it("mutates a surviving state's name and keeps fullName in sync, when P() always succeeds", () => {
     ErasModule.generate(2, 100);
     // "Small" contains "ll", a rule toponym-drift always applies when it matches
@@ -267,6 +274,21 @@ describe("ErasModule.generate", () => {
     globalThis.pack.burgs[1].name = "Small Port"; // the capital burg
     ErasModule.generate(2, 100);
     expect(globalThis.pack.burgs[1].name).toBe("Smal Port");
+  });
+
+  it("never drifts the name of a user-locked state, even when P() always succeeds", () => {
+    globalThis.pack.states[2].lock = true;
+    globalThis.pack.states[2].userLocked = true;
+    ErasModule.generate(2, 100);
+    // "Small" would drift to "Smal" (see the test above) if it weren't locked
+    expect(globalThis.pack.states[2].name).toBe("Small");
+  });
+
+  it("never drifts the name of a locked burg, even when P() always succeeds", () => {
+    globalThis.pack.burgs[1].name = "Small Port";
+    globalThis.pack.burgs[1].lock = true;
+    ErasModule.generate(2, 100);
+    expect(globalThis.pack.burgs[1].name).toBe("Small Port");
   });
 
   it("leaves names and locks untouched when P() always fails", () => {

@@ -2,6 +2,7 @@
 // people known for something small - worldbuilding texture, not adventure hooks or quest-givers.
 // Titles, dynasties and family ties are all derived procedurally from the existing state/province
 // data (form, diplomacy) - nothing here is AI-generated.
+import { detachLockedBurgs, hasLockedBurg, isSeatLocked } from "@/generators/burg-locks";
 import { Emblems } from "@/generators/emblems-generator";
 import { getNextPersistentId } from "@/generators/persistent-id";
 import { getRandomColor, minmax, P, ra, rand, rw, withAnnotations } from "@/utils";
@@ -470,8 +471,10 @@ class CharactersModule {
     // the rest makes sense), a marriage merger is all-or-nothing - "uniting the crown" while one
     // locked province stays orphaned under the now-dead state doesn't fit the narrative, and
     // bailing out only after the ruler/liege mutations below would leave those half-applied. So a
-    // single locked province blocks the whole merger, checked before anything else changes.
+    // single locked province - or a single locked burg, which would otherwise be left as an enclave
+    // of a state that no longer exists - blocks the whole merger, checked before anything else changes.
     if ((pack.provinces ?? []).some(p => p?.i && !p.removed && p.state === state.i && p.lock)) return null;
+    if (hasLockedBurg(state.i)) return null;
 
     // matched by persistentId, not the raw state.i the marriage tie was formed with - that .i may
     // have been renumbered one or more eras ago, while this ruler kept ruling unchanged (a marriage
@@ -544,7 +547,9 @@ class CharactersModule {
     // filtering .lock out of its own border-province selection).
     const capitalBurg = pack.burgs[state.capital];
     const capitalProvinceId = capitalBurg ? pack.cells.province?.[capitalBurg.cell] : undefined;
-    const splinterableProvinces = provinces.filter(province => province.i !== capitalProvinceId && !province.lock);
+    const splinterableProvinces = provinces.filter(
+      province => province.i !== capitalProvinceId && !province.lock && !isSeatLocked(province)
+    );
     if (!splinterableProvinces.length) return false; // nothing left to give away
 
     const takeCount = Math.min(splinterableProvinces.length, Math.max(1, Math.floor(provinces.length / 2)));
@@ -592,6 +597,8 @@ class CharactersModule {
     // know this burg is already someone's capital and can hand it to another state
     seatBurg.capital = 1;
 
+    // any other locked burg inside a splinter province stays with the parent realm as an enclave
+    for (const province of splinterProvinces) detachLockedBurgs(province.i);
     const splinterProvinceIds = new Set(splinterProvinces.map(province => province.i));
     for (const province of splinterProvinces) province.state = newStateId;
     for (const cellId of pack.cells.i) {
