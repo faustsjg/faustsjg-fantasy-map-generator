@@ -12,6 +12,7 @@ import { Population } from "./population-generator";
 import type { ProductionRecord } from "./production-generator";
 import type { River } from "./river-generator";
 import type { Point } from "./voronoi";
+import { populationStage } from "./watabou-stages";
 
 export const isAutoBurgLimit = (): boolean => options.generation.burgs.limit === AUTO_BURG_LIMIT;
 
@@ -593,7 +594,8 @@ class BurgModule {
 
   private createWatabouCityLinks(burg: Burg) {
     const cells = pack.cells;
-    const { i, name, population: burgPopulation, cell } = burg;
+    const { i, name, cell } = burg;
+    const burgPopulation = populationStage(burg.population!); // see watabou-stages.ts
     const burgSeed = burg.MFCG || options.map.seed + String(burg.i).padStart(4, "0");
 
     const sizeRaw =
@@ -660,10 +662,11 @@ class BurgModule {
 
   private createWatabouVillageLinks(burg: Burg) {
     const { cells, features } = pack;
-    const { i, population, cell } = burg;
+    const { i, cell } = burg;
+    const population = populationStage(burg.population!); // see watabou-stages.ts
 
     const burgSeed = options.map.seed + String(i).padStart(4, "0");
-    const pop = rn(population! * options.map.units.population.scale * options.map.units.population.urbanization.rate);
+    const pop = rn(population * options.map.units.population.scale * options.map.units.population.urbanization.rate);
     const tags = [];
 
     if (cells.r[cell] && cells.haven[cell]) tags.push("estuary");
@@ -724,7 +727,9 @@ class BurgModule {
   private createWatabouDwellingLinks(burg: Burg) {
     const burgSeed = options.map.seed + String(burg.i).padStart(4, "0");
     const pop = rn(
-      burg.population! * options.map.units.population.scale * options.map.units.population.urbanization.rate
+      populationStage(burg.population!) *
+        options.map.units.population.scale *
+        options.map.units.population.urbanization.rate
     );
 
     const tags = (() => {
