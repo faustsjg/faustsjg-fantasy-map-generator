@@ -1,30 +1,14 @@
 // Regenerates the world at a higher cell density while keeping the current heightmap's shape.
 import { mean, quadtree } from "d3";
+import { getPointsNumber } from "@/data/graph-density";
 import { ErasePipeline } from "@/generators/generation-pipeline";
-import { ensureEl, isWater, minmax, SEA_LEVEL } from "@/utils";
+import { findEl, isWater, minmax, SEA_LEVEL } from "@/utils";
 import type { Point } from "./voronoi";
 
 // how far from the sea-level threshold a cell still counts as "coastal zone" for fine detail
 const COASTAL_BAND = 8;
 // how mountainous a cell must already be before it gets extra sub-peak detail
 const HIGHLAND_THRESHOLD = 55;
-
-// Same table the "Points number" sliders already use (public/modules/ui/options.js's cellsDensityMap)
-export const CELLS_DENSITY_MAP: Record<number, number> = {
-  1: 1000,
-  2: 2000,
-  3: 5000,
-  4: 10000,
-  5: 20000,
-  6: 30000,
-  7: 40000,
-  8: 50000,
-  9: 60000,
-  10: 70000,
-  11: 80000,
-  12: 90000,
-  13: 100000
-};
 
 /**
  * Scale a flat count (cultures, states) up by the same sublinear rate getTownsNumber already
@@ -45,11 +29,10 @@ class DetailExpanderModule {
    * count; this only widens that count, it never touches the macro land/sea shape.
    */
   async process(densityLevel: number, erosion: boolean): Promise<void> {
-    const cellsInput = ensureEl<HTMLInputElement>("pointsInput");
-    const oldCells = Number(cellsInput.dataset.cells) || grid.points.length;
-    const newCells = CELLS_DENSITY_MAP[densityLevel] ?? CELLS_DENSITY_MAP[13];
-    cellsInput.value = String(densityLevel);
-    cellsInput.dataset.cells = String(newCells);
+    const oldCells = grid.points.length;
+    const newCells = getPointsNumber(densityLevel);
+    // Grid.generate() reads the cell count from here, not from the Points slider
+    options.map.graph.points = newCells;
 
     const oldPoints = grid.points;
     const oldHeights = grid.cells.h;
@@ -69,20 +52,20 @@ class DetailExpanderModule {
   }
 
   // burgs/towns already scale their own target count off the populated cell count (see
-  // getTownsNumber in burgs-generator.ts); cultures and states don't - they're a flat count read
-  // straight off their input - so grow those inputs too, at the same sublinear rate the town
+  // getTownsNumber in burgs-generator.ts); cultures and states don't - they're a flat limit read
+  // straight off the generation options - so grow those too, at the same sublinear rate the town
   // count formula uses, or a denser world would keep the same handful of cultures/states forever
   private scaleUpCulturesAndStates(oldCells: number, newCells: number): void {
-    const culturesInput = ensureEl<HTMLInputElement>("culturesInput");
-    const culturesMax = Number(culturesInput.max) || Number.POSITIVE_INFINITY;
-    const newCulturesCount = scaledCount(Number(culturesInput.value), oldCells, newCells, culturesMax);
-    culturesInput.value = String(newCulturesCount);
-    ensureEl<HTMLInputElement>("culturesOutput").value = String(newCulturesCount);
-
-    const statesNumber = ensureEl<HTMLInputElement>("statesNumber");
-    const statesMax = Number(statesNumber.max) || Number.POSITIVE_INFINITY;
-    const newStatesCount = scaledCount(Number(statesNumber.value), oldCells, newCells, statesMax);
-    statesNumber.value = String(newStatesCount);
+    // the cultures slider's max follows the selected culture set; read it off the slider if shown
+    const culturesMax = Number(findEl<HTMLInputElement>("culturesInput")?.max) || Number.POSITIVE_INFINITY;
+    const statesMax = Number(findEl<HTMLInputElement>("statesNumber")?.getAttribute("max")) || Number.POSITIVE_INFINITY;
+    const { cultures, states } = options.generation;
+    const culturesLimit = scaledCount(cultures.limit, oldCells, newCells, culturesMax);
+    const statesLimit = scaledCount(states.limit, oldCells, newCells, statesMax);
+    Options.set(o => {
+      o.generation.cultures.limit = culturesLimit;
+      o.generation.states.limit = statesLimit;
+    });
   }
 
   private resampleHeightmap(oldPoints: Point[], oldHeights: Uint8Array): void {

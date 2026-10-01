@@ -1,15 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CELLS_DENSITY_MAP, scaledCount } from "./detail-expander";
-
-describe("CELLS_DENSITY_MAP", () => {
-  it("is monotonically increasing across its 13 levels", () => {
-    const values = Object.keys(CELLS_DENSITY_MAP)
-      .map(Number)
-      .sort((a, b) => a - b)
-      .map(level => CELLS_DENSITY_MAP[level]);
-    for (let i = 1; i < values.length; i++) expect(values[i]).toBeGreaterThan(values[i - 1]);
-  });
-});
+import { scaledCount } from "./detail-expander";
 
 describe("scaledCount", () => {
   it("leaves the count unchanged when density doesn't grow", () => {

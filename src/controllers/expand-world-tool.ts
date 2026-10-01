@@ -1,8 +1,10 @@
 import { destroyDialog } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
+import { changeCellsDensity } from "@/components/options/tabs/options-tab";
 import { tip } from "@/components/tooltips";
 import { undraw } from "@/components/undraw";
-import { CELLS_DENSITY_MAP, DetailExpander } from "@/generators/detail-expander";
+import { getPointsNumber } from "@/data/graph-density";
+import { DetailExpander } from "@/generators/detail-expander";
 import { ensureEl } from "../utils";
 
 function open(): void {
@@ -30,8 +32,8 @@ function open(): void {
 function renderDialog(): void {
   destroyDialog("expandWorldTool");
 
-  const currentLevel = Number(ensureEl<HTMLInputElement>("pointsInput").value) || 4;
-  const cells = CELLS_DENSITY_MAP[currentLevel];
+  const currentLevel = options.generation.graph.density;
+  const cells = getPointsNumber(currentLevel);
 
   const html = /* html */ `<div id="expandWorldTool" class="dialog">
     <p>
@@ -70,7 +72,7 @@ function cleanup(): void {
 }
 
 function handlePointsInput(e: Event): void {
-  const cells = CELLS_DENSITY_MAP[+(e.target as HTMLInputElement).value];
+  const cells = getPointsNumber(+(e.target as HTMLInputElement).value);
   ensureEl<HTMLOutputElement>("expandWorldPointsFormatted").value = `${cells / 1000}K`;
 }
 
@@ -81,6 +83,7 @@ async function expandWorld(): Promise<void> {
   tip("Expanding world detail...", false, "info");
   try {
     undraw();
+    changeCellsDensity(densityLevel); // the Points slider follows the new density, as with Transform
     await DetailExpander.process(densityLevel, erosion);
     Layers.drawAll();
     tip("World detail expanded", true, "success", 4000);
