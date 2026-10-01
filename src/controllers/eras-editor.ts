@@ -359,8 +359,18 @@ function selectEra(index: number, highlight = false): void {
   pack.provinces = structuredClone(era.provinces);
   pack.cells.province = Uint16Array.from(era.cellsProvince);
   pack.burgs = structuredClone(era.burgs);
+  // applySuccession() clears cells.burg when it abandons a settlement, so rebuild it from this
+  // era's own burgs - otherwise a burg abandoned in a later era stays invisible to everything that
+  // reads cells.burg (province generation, route pathfinding, the map's own burg lookups)
+  pack.cells.burg = new Uint16Array(pack.cells.i.length);
+  for (const burg of pack.burgs) {
+    if (burg.i && !burg.removed) pack.cells.burg[burg.cell] = burg.i;
+  }
   pack.characters = structuredClone(era.characters);
   pack.cells.pop = Float32Array.from(era.cellsPop);
+  pack.routes = structuredClone(era.routes);
+  pack.cells.routes = Routes.buildLinks(pack.routes);
+  Routes.sync();
   // the year LABEL below always matched the era shown, but options.year itself (what
   // ErasModule.generate() actually reads as "now") didn't - clicking Generate while looking at an
   // older era would silently start the new run from whatever year the last run ended on, not this
@@ -369,7 +379,7 @@ function selectEra(index: number, highlight = false): void {
   currentEraIndex = index;
 
   unfog();
-  Layers.draw("states", "borders", "provinces", "labels", "burgIcons", "military", "goods", "emblems");
+  Layers.draw("states", "borders", "provinces", "routes", "labels", "burgIcons", "military", "goods", "emblems");
 
   if (!isErasDialogOpen()) return;
 

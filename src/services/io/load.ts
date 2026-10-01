@@ -429,6 +429,9 @@ async function parseLoadedData(data: string[], mapVersion: string | null): Promi
       // than leaving it undefined (Float32Array.from(undefined) throws) or zeroing it out (which
       // would draw every cell as unpopulated the moment that old era is viewed)
       era.cellsPop ??= Array.from(pack.cells.pop);
+      // eras saved before routes were captured per era all shared the one network the map was
+      // saved with, so the map's own routes are exactly what those eras showed
+      era.routes ??= structuredClone(pack.routes);
     }
     pack.eras = eras;
     pack.aiTerrainEdits = data[53] ? JSON.parse(data[53]) : [];

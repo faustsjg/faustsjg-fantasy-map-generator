@@ -5,6 +5,8 @@ import { Characters } from "@/generators/characters-generator";
 import { getMilitaryRatio, getTroopsPerArea } from "@/generators/military-generator";
 import type { Province } from "@/generators/provinces-generator";
 import { Rebellions } from "@/generators/rebellions-generator";
+import { evolveRoutes } from "@/generators/route-evolution";
+import type { Route } from "@/generators/routes-generator";
 import type { State } from "@/generators/states-generator";
 import { mutateName } from "@/generators/toponym-drift";
 import { Wars } from "@/generators/wars-generator";
@@ -30,6 +32,9 @@ export interface Era {
   // the last-generated era left them as
   burgs: Burg[];
   characters: Character[];
+  // the road network changes too (see route-evolution.ts) - without capturing it, every era would
+  // draw whatever network the last-generated era left behind
+  routes: Route[];
   // human-readable notes on disease/famine events that hit this era (subsistence crises, the rare
   // great pandemic) - population changes gradually every era regardless, so unlike a state's birth
   // or death there's no way to detect "an epidemic happened" by diffing two snapshots; the era that
@@ -176,6 +181,8 @@ class ErasModule {
       const epidemicEvents = this.growPopulation(yearsPerEra, populationCeilingByCell, populationCeilingByBurg);
       window.States.collectStatistics(); // refresh area/burgs/rural/urban after population changed
       this.updateTreasuries();
+      const previousEra = eras[eras.length - 1];
+      evolveRoutes(new Set(previousEra.states.filter(s => s.i && !s.removed).map(s => s.capital)));
       eras.push(this.snapshot(options.year, epidemicEvents));
     }
 
@@ -192,6 +199,7 @@ class ErasModule {
       cellsProvince: Array.from(pack.cells.province ?? []),
       burgs: structuredClone(pack.burgs),
       characters: structuredClone(pack.characters ?? []),
+      routes: structuredClone(pack.routes ?? []),
       epidemicEvents,
       cellsPop: Array.from(pack.cells.pop)
     };
