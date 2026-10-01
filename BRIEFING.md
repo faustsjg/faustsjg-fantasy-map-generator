@@ -57,7 +57,7 @@ Status:
 - Done: locks persist across eras. A locked state, province or burg is immune to war, rebellion, marriage mergers/splits and manual removal, and a locked burg stays with its state as an enclave. The Locks panel lists everything locked
 - Partial: place names mutate (`src/generators/toponym-drift.ts`), but with one generic rule set for the whole map, not per-culture sound changes
 - Not done: singular buildings being repurposed
-- Done: roads (`src/generators/route-evolution.ts`). The network generated with the map persists and never decays (the Roman roads). A capital that holds its status for two eras running gets a road to the nearest road; 300 years after it stops being a capital that road decays into a trail, and comes back if it becomes an established capital again. A road that only reached abandoned settlements also decays. Each era stores its own network. Route names never change
+- Done: roads (`src/generators/route-evolution.ts`). The network generated with the map persists and never decays (the Roman roads). A capital that holds its status for two eras running gets a road to the nearest road: trails along the way are promoted to roads (split if needed, keeping their name) and only the stretches with no trail are built new. 300 years after it stops being a capital, everything promoted or built for it decays back into trails, and is promoted again if it becomes an established capital again. A road that only reached abandoned settlements also decays. Each era stores its own network. Route names never change
 
 ## Phase 2 — the time bar — done
 
@@ -107,5 +107,5 @@ Then resolve conflicts, run the checks above, and push.
 To keep these merges cheap:
 
 - Put new behaviour in new files (eras, wars, rebellions, characters, toponym drift, burg locks, state diplomacy, locks overview, AI terrain) and keep edits to Azgaar's own files to small hooks
-- Azgaar files we already change (not a complete list), where conflicts are most likely: `states-generator.ts`, `states-editor.ts`, `provinces-editor.ts`, `burg-editor.ts`, `burgs-overview.ts`, `diplomacy-editor.ts`, `routes-generator.ts`, `src/services/io/load.ts`, `src/index.html`, `src/components/tools.ts`, `src/controllers/index.ts`
+- Azgaar files we already change (not a complete list), where conflicts are most likely: `states-generator.ts`, `states-editor.ts`, `provinces-editor.ts`, `burg-editor.ts`, `burgs-overview.ts`, `diplomacy-editor.ts`, `src/services/io/load.ts`, `src/index.html`, `src/components/tools.ts`, `src/controllers/index.ts`
 - Merge upstream often, in small steps, rather than letting it pile up

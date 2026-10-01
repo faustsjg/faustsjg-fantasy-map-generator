@@ -738,22 +738,18 @@ class RoutesModule {
     return pack.routes.length ? Math.max(...pack.routes.map(r => r.i)) + 1 : 0;
   }
 
-  // connect cell with routes system by land; `isExit` narrows which cells count as the
-  // destination (e.g. only cells already on a road)
-  connect(
-    cellId: number,
-    group = "trails",
-    isExit = (c: number) => isLand(c, pack) && this.isConnected(c)
-  ): Route | undefined {
+  // connect cell with routes system by land
+  connect(cellId: number): Route | undefined {
     const getCost = this.createCostEvaluator({ isWater: false });
+    const isExit = (c: number) => isLand(c, pack) && this.isConnected(c);
     const pathCells = findPath(cellId, isExit, getCost, pack);
     if (!pathCells) return;
 
     const pointsArray = this.preparePointsArray();
-    const points = this.getPoints(group, pathCells, pointsArray);
+    const points = this.getPoints("trails", pathCells, pointsArray);
     const feature = pack.cells.f[cellId];
     const routeId = this.getNextId();
-    const newRoute = { i: routeId, group, feature, points };
+    const newRoute = { i: routeId, group: "trails", feature, points };
     pack.routes.push(newRoute as Route);
 
     const addConnection = (from: number, to: number, routeId: number) => {
