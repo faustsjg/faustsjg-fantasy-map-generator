@@ -351,12 +351,6 @@ export const MAP_COMMANDS: MapCommand[] = [
     run: () => Controllers.TransformTool.open()
   },
   {
-    id: "openExpandWorldTool",
-    name: "Expand World",
-    aliases: "resample density cells",
-    run: () => Controllers.ExpandWorldTool.open()
-  },
-  {
     id: "openWrapTool",
     name: "Open Wrap Tool",
     aliases: "reshape cells brush",

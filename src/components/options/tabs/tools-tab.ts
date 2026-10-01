@@ -236,12 +236,6 @@ const TEMPLATE = /* html */ `
   <div class="grid">
     <button id="openSubmapTool" data-tip="Click to generate a submap from the current viewport">Submap</button>
     <button id="openTransformTool" data-tip="Click to transform the map">Transform</button>
-    <button
-      id="openExpandWorldTool"
-      data-tip="Click to resample the world at a higher cell density, keeping the same coastline and terrain shape"
-    >
-      Expand World
-    </button>
     <button id="openWrapTool" data-tip="Adjust cell shapes with a brush">Wrap</button>
   </div>
 `;
