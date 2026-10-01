@@ -64,12 +64,17 @@ function decayAbandonedRoads(): void {
 function decayFormerCapitalRoads(capitals: Set<number>): void {
   const routes = pack.routes as EraRoute[];
   for (const route of routes) {
-    if (route.capitalBurg !== undefined && capitals.has(route.capitalBurg)) route.capitalYear = options.year;
+    if (route.capitalBurg !== undefined && capitals.has(route.capitalBurg))
+      route.capitalYear = options.map.lore.calendar.year;
   }
 
   for (const route of routes) {
     if (route.group !== "roads" || route.lock || route.capitalBurg === undefined) continue;
-    if (options.year - (route.capitalYear ?? options.year) < CAPITAL_ROAD_DECAY_YEARS) continue;
+    if (
+      options.map.lore.calendar.year - (route.capitalYear ?? options.map.lore.calendar.year) <
+      CAPITAL_ROAD_DECAY_YEARS
+    )
+      continue;
 
     const cells = new Set(route.points.slice(0, -1).map(point => point[2]));
     const endsOnThisRoad = (other: EraRoute) =>
@@ -114,7 +119,7 @@ function buildRoadAlong(path: number[], burgId: number): EraRoute[] {
   for (const run of splitIntoRuns(path)) {
     const route = run.onTrail ? promoteTrailStretch(run.cells) : addNewRoad(run.cells);
     route.capitalBurg = burgId;
-    route.capitalYear = options.year;
+    route.capitalYear = options.map.lore.calendar.year;
     roads.push(route);
   }
   return roads;

@@ -585,7 +585,7 @@ describe("CharactersModule.applySuccession", () => {
       children: [{ name: "BHeir", gender: "m" }] // has its own heir - never goes extinct
     };
 
-    globalThis.options = { year: 1000 } as any;
+    globalThis.options = { map: { lore: { calendar: { year: 1000 } } } } as any;
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1, state: 1 }), makeBurg({ i: 2, state: 2 })],
       states: [
@@ -651,7 +651,7 @@ describe("CharactersModule.applySuccession", () => {
       children: [{ name: "BHeir", gender: "m" }]
     };
 
-    globalThis.options = { year: 1000 } as any;
+    globalThis.options = { map: { lore: { calendar: { year: 1000 } } } } as any;
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1, state: 1 }), makeBurg({ i: 2, state: 2 })],
       states: [
@@ -713,7 +713,7 @@ describe("CharactersModule.applySuccession", () => {
       children: [{ name: "BHeir", gender: "m" }]
     };
 
-    globalThis.options = { year: 1000 } as any;
+    globalThis.options = { map: { lore: { calendar: { year: 1000 } } } } as any;
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1, state: 1 }), makeBurg({ i: 2, state: 2 })],
       states: [
@@ -770,7 +770,7 @@ describe("CharactersModule.applySuccession", () => {
       children: [{ name: "BHeir", gender: "m" }]
     };
 
-    globalThis.options = { year: 1000 } as any;
+    globalThis.options = { map: { lore: { calendar: { year: 1000 } } } } as any;
     globalThis.pack = {
       // burg 1 sits on Kingland's cell 1 and is locked - an enclave of a state that would no
       // longer exist after the merger, so the merger can't happen at all
@@ -827,7 +827,7 @@ describe("CharactersModule.applySuccession", () => {
       children: [{ name: "BHeir", gender: "m" }]
     };
 
-    globalThis.options = { year: 1000 } as any;
+    globalThis.options = { map: { lore: { calendar: { year: 1000 } } } } as any;
     globalThis.pack = {
       burgs: [
         0 as any,
@@ -906,7 +906,7 @@ describe("CharactersModule.applySuccession", () => {
       children: [{ name: "SurvivorHeir", gender: "m" }] // has its own heir - never goes extinct
     };
 
-    globalThis.options = { year: 1000 } as any;
+    globalThis.options = { map: { lore: { calendar: { year: 1000 } } } } as any;
     globalThis.pack = {
       burgs: [0 as any, makeBurg({ i: 1, state: 1 }), makeBurg({ i: 2, state: 2 }), makeBurg({ i: 3, state: 3 })],
       states: [

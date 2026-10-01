@@ -109,3 +109,6 @@ To keep these merges cheap:
 - Put new behaviour in new files (eras, wars, rebellions, characters, toponym drift, burg locks, state diplomacy, locks overview, AI terrain) and keep edits to Azgaar's own files to small hooks
 - Azgaar files we already change (not a complete list), where conflicts are most likely: `states-generator.ts`, `states-editor.ts`, `provinces-editor.ts`, `burg-editor.ts`, `burgs-overview.ts`, `diplomacy-editor.ts`, `src/services/io/load.ts`, `src/index.html`, `src/components/tools.ts`, `src/controllers/index.ts`
 - Merge upstream often, in small steps, rather than letting it pile up
+- Map file format: Azgaar adds each new field at the next free line of the `.map` file. This fork keeps its own fields far away from those (eras at line 100, AI Terrain edits at 101, see `src/services/io/fork-fields.ts`), so they never collide; maps saved before the first upstream merge (version 1.149.2 or older) are still read from their old lines 52/53
+- The current year lives in Azgaar's lore calendar (`options.map.lore.calendar.year`); the eras read and write it there
+- Azgaar's own e2e snapshots of map layers (`tests/e2e/layers.spec.ts`) don't match this fork's generated maps, because the fork changes generation (settlement placement, an extra culture...). They were already failing before the first merge

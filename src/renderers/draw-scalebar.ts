@@ -1,7 +1,20 @@
-import { range, select } from "d3";
+import { range, type Selection, select } from "d3";
+import { tip } from "@/components/tooltips";
+import { viewport } from "@/components/viewport";
+import { Controllers } from "@/controllers";
 import { ensureEl, rn } from "../utils";
 
-export function drawScaleBar(parent?: SVGSVGElement, scaleLevel = scale, width = svgWidth, height = svgHeight): void {
+// TODO: a renderer should not own controls. Move this to a proper scale-bar component once one exists
+function addScaleBarControls(scaleBar: Selection<SVGGElement, unknown, null, undefined>): void {
+  scaleBar.on("mousemove", () => tip("Click to open Units Editor")).on("click", () => Controllers.UnitsEditor.open());
+}
+
+export function drawScaleBar(
+  parent?: SVGSVGElement,
+  scaleLevel = viewport.scale,
+  width = viewport.width,
+  height = viewport.height
+): void {
   const parentEl = parent || ensureEl<SVGSVGElement>("map");
   const scaleBar = select(parentEl).select<SVGGElement>("#scaleBar");
 
@@ -9,12 +22,14 @@ export function drawScaleBar(parent?: SVGSVGElement, scaleLevel = scale, width =
   const scaleBarEl = scaleBar.node();
   if (!scaleBarEl || getComputedStyle(scaleBarEl).display === "none") return;
 
+  if (!parent) addScaleBarControls(scaleBar); // the on-map bar is clickable, an exported copy is not
+
   const renderedContent = scaleBar.select("#scaleBarContent");
   const isRendered = Boolean(renderedContent.size());
   TIME && !isRendered && console.time("drawScaleBar");
 
-  const unit = distanceUnitInput.value;
-  const size = +scaleBar.attr("data-bar-size");
+  const unit = options.map.units.distance.unit;
+  const { barSize: size, label, x: posX, y: posY } = styles.scaleBar.options;
 
   renderedContent?.remove(); // redraw content every time, but not scaleBarBack
   const content = scaleBar.append("g").attr("id", "scaleBarContent");
@@ -57,9 +72,11 @@ export function drawScaleBar(parent?: SVGSVGElement, scaleLevel = scale, width =
     .attr("x", (d: number) => rn((d * length) / 5, 2))
     .attr("y", 0)
     .attr("dy", "-.6em")
-    .text((d: number) => rn((((d * length) / 5) * distanceScale) / scaleLevel) + (d < 5 ? "" : ` ${unit}`));
+    .text(
+      (d: number) =>
+        rn((((d * length) / 5) * options.map.units.distance.scale) / scaleLevel) + (d < 5 ? "" : ` ${unit}`)
+    );
 
-  const label = scaleBar.attr("data-label");
   if (label) {
     texts
       .append("text")
@@ -73,10 +90,12 @@ export function drawScaleBar(parent?: SVGSVGElement, scaleLevel = scale, width =
   const scaleBarBack = scaleBar.select<SVGRectElement>("#scaleBarBack");
   if (scaleBarBack.size()) {
     const bbox = (content.node() as SVGGElement).getBBox();
-    const paddingTop = +scaleBarBack.attr("data-top") || 0;
-    const paddingLeft = +scaleBarBack.attr("data-left") || 0;
-    const paddingRight = +scaleBarBack.attr("data-right") || 0;
-    const paddingBottom = +scaleBarBack.attr("data-bottom") || 0;
+    const {
+      top: paddingTop,
+      left: paddingLeft,
+      right: paddingRight,
+      bottom: paddingBottom
+    } = styles.scaleBar.back.options;
 
     scaleBar
       .select("#scaleBarBack")
@@ -85,8 +104,6 @@ export function drawScaleBar(parent?: SVGSVGElement, scaleLevel = scale, width =
       .attr("width", bbox.width + paddingRight)
       .attr("height", bbox.height + paddingBottom);
 
-    const posX = +scaleBar.attr("data-x") || 99;
-    const posY = +scaleBar.attr("data-y") || 99;
     const backBbox = (scaleBarBack.node() as SVGGElement).getBBox();
     const x = rn((width * posX) / 100 - backBbox.width + 10);
     const y = rn((height * posY) / 100 - backBbox.height + 20);
@@ -98,8 +115,7 @@ export function drawScaleBar(parent?: SVGSVGElement, scaleLevel = scale, width =
   function getLength(): number {
     const init = 100;
 
-    const size = +scaleBar.attr("data-bar-size");
-    let val = (init * size * distanceScale) / scaleLevel; // bar length in distance unit
+    let val = (init * size * options.map.units.distance.scale) / scaleLevel; // bar length in distance unit
     if (val > 900)
       val = rn(val, -3); // round to 1000
     else if (val > 90)
@@ -107,7 +123,7 @@ export function drawScaleBar(parent?: SVGSVGElement, scaleLevel = scale, width =
     else if (val > 9)
       val = rn(val, -1); // round to 10
     else val = rn(val); // round to 1
-    const length = (val * scaleLevel) / distanceScale; // actual length in pixels on this scale
+    const length = (val * scaleLevel) / options.map.units.distance.scale; // actual length in pixels on this scale
     return length;
   }
 }

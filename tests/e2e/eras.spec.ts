@@ -1,9 +1,10 @@
 import {expect, test} from "@playwright/test";
+import {waitForMap} from "./wait-for-map";
 
 test.describe("eras", () => {
   test.beforeEach(async ({page}) => {
     await page.goto("/?seed=test-eras&width=1280&height=720");
-    await page.waitForFunction(() => (window as any).mapId !== undefined, {timeout: 60000});
+    await waitForMap(page);
   });
 
   test("generates eras and switches the political layer with the slider", async ({page}) => {

@@ -23,7 +23,7 @@ function editBurgGroups(): void {
         ensureEl<HTMLFormElement>("burgGroupsForm").requestSubmit();
       },
       Add: () => {
-        const maxOrder = Math.max(0, ...options.burgs.groups.map(({ order }) => order));
+        const maxOrder = Math.max(0, ...options.map.burgs.groups.map(({ order }) => order));
         const group: BurgGroup = { name: "", order: maxOrder + 1, active: true };
         ensureEl("burgGroupsBody").insertAdjacentHTML("beforeend", createRow(group));
       },
@@ -110,7 +110,7 @@ function closeBurgGroupsEditor(): void {
   ensureEl("burgGroupsEditor").remove();
 }
 
-function addRows(groups: BurgGroup[] = options.burgs.groups): void {
+function addRows(groups: BurgGroup[] = options.map.burgs.groups): void {
   const rows = groups.map(createRow);
   ensureEl("burgGroupsBody").innerHTML = rows.join("");
 }
@@ -412,13 +412,15 @@ function submitForm(event: Event): void {
     return;
   }
 
-  options.burgs.groups = rows.map(rowToGroup);
-  localStorage.setItem("burg-groups", JSON.stringify(options.burgs.groups));
+  options.map.burgs.groups = rows.map(rowToGroup);
+  Options.save(); // the set is this map's, and what the next map starts from
 
   // put burgs to new groups
   const validBurgs = pack.burgs.filter(b => b.i && !b.removed);
   const populations = validBurgs.map(b => b.population!).sort((a, b) => a - b);
   validBurgs.forEach(burg => void Burgs.defineGroup(burg, populations));
+  window.Labels.ensureBurgLabelGroups();
+  window.Burgs.ensureBurgGroupStyles();
 
   Layers.draw("burgIcons");
   Layers.draw("labels");

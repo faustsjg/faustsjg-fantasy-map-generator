@@ -1,6 +1,7 @@
 import { destroyDialog } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
 import { tip } from "@/components/tooltips";
+import { undraw } from "@/components/undraw";
 import { CELLS_DENSITY_MAP, DetailExpander } from "@/generators/detail-expander";
 import { ensureEl } from "../utils";
 

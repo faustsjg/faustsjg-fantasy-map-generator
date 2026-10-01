@@ -2,6 +2,7 @@ import { type DriveStep, driver } from "driver.js";
 import { closeDialogs } from "@/components/dialog/dialog-helpers";
 import { ensureEl } from "@/utils/nodeUtils";
 import "driver.js/dist/driver.css";
+import { showExportPane } from "@/components/options/io-panes";
 
 function closeOptionsPanel() {
   const options = ensureEl("options");
@@ -34,7 +35,10 @@ function forMobile(steps: DriveStep[]): DriveStep[] {
     .map(step => (step.popover?.side === "right" ? { ...step, popover: { ...step.popover, side: "over" } } : step));
 }
 
+let activeTour: ReturnType<typeof driver> | null = null;
+
 function start() {
+  if (activeTour?.isActive()) return;
   closeOptionsPanel();
 
   const tour = driver({
@@ -64,11 +68,11 @@ function start() {
         });
       }
     },
-    onDestroyStarted: () => {
+    onDestroyed: () => {
+      activeTour = null;
       document.removeEventListener("keydown", handleKeydown);
       hideHeightmapCustomizationPanel();
       closeDialogs();
-      tour.destroy();
       closeOptionsPanel();
     },
     steps: forMobile([
@@ -90,7 +94,7 @@ function start() {
             "Scroll the mouse wheel to zoom in and out. Click and drag on the map to pan. Double-click a location to center on it.",
           onNextClick: () => {
             document.body.classList.add("tour-free-roam");
-            tour.moveNext();
+            advanceTour(tour);
           }
         }
       },
@@ -120,7 +124,7 @@ function start() {
           onNextClick: () => {
             const options = ensureEl("options");
             if (options.style.display === "none") ensureEl("optionsTrigger").click();
-            tour.moveNext();
+            advanceTour(tour);
           }
         }
       },
@@ -132,9 +136,13 @@ function start() {
           // Normally done by the #optionsTrigger step above, but forMobile()
           // drops that step entirely on mobile — repeated here so free-roam
           // mode still ends and any leftover open panel still closes before
-          // the rest of the tour walks through the tabs.
-          document.body.classList.remove("tour-free-roam");
-          closeOptionsPanel();
+          // the rest of the tour walks through the tabs. On mobile, tapping
+          // the (already active) Layers tab then expands the panel again; on
+          // desktop the previous step has just opened it, so leave it open.
+          if (window.matchMedia("(max-width: 640px)").matches) {
+            document.body.classList.remove("tour-free-roam");
+            closeOptionsPanel();
+          }
           ensureEl("layersTab")?.click();
         },
         popover: {
@@ -243,7 +251,7 @@ function start() {
             "This button opens the World Configurator where you can set the map's position on the globe, adjust equatorial and polar temperatures, and configure precipitation to shape the world's climate.",
           side: "right",
           onNextClick: () => {
-            tour.moveNext();
+            advanceTour(tour);
           }
         }
       },
@@ -261,7 +269,7 @@ function start() {
           onNextClick: () => {
             closeDialogs();
             ensureEl("toolsTab")?.click();
-            tour.moveNext();
+            advanceTour(tour);
           }
         }
       },
@@ -290,7 +298,7 @@ function start() {
             "Open the Heightmap editor to manually sculpt terrain by raising or lowering elevation. Changes here reshape coastlines, rivers, and biomes.",
           side: "right",
           onNextClick: () => {
-            tour.moveNext();
+            advanceTour(tour);
           }
         }
       },
@@ -352,7 +360,7 @@ function start() {
             "Click Export to open the export dialog where you can download the map as an SVG, PNG, or JPEG image, split it into tiles, or export the world data as JSON.",
           side: "top",
           onNextClick: () => {
-            tour.moveNext();
+            advanceTour(tour);
           }
         }
       },
@@ -369,7 +377,7 @@ function start() {
           side: "top",
           onNextClick: () => {
             closeDialogs();
-            tour.moveNext();
+            advanceTour(tour);
           }
         }
       },
@@ -412,6 +420,7 @@ function start() {
     }
   }
 
+  activeTour = tour;
   document.addEventListener("keydown", handleKeydown);
   tour.drive();
 }
@@ -421,6 +430,15 @@ function hideHeightmapCustomizationPanel() {
   if (customizationMenu.style.display !== "block") return;
   customizationMenu.style.display = "none";
   ensureEl("toolsContent").style.display = "block";
+}
+
+// Let the browser finish the click before Driver.js replaces its popover. Several tour steps
+// open or close panels in their callback, and replacing the clicked button during dispatch can
+// leave Playwright (and real pointer users) waiting on a moving target.
+function advanceTour(tour: ReturnType<typeof driver>): void {
+  setTimeout(() => {
+    if (tour.isActive()) tour.moveNext();
+  });
 }
 
 export const UiTour = { start };

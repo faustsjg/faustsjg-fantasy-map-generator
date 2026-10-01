@@ -59,7 +59,7 @@ function addLines(): void {
     .selectAll<SVGGElement, unknown>("g")
     .nodes()
     .map(el => {
-      const count = el.children.length;
+      const count = pack.routes.filter((route: Route) => route.group === el.id).length;
       return /* html */ `<div data-id="${el.id}" class="states" style="display: flex; justify-content: space-between;">
           <span>${el.id} (${count})</span>
           <div style="width: auto; display: flex; gap: 0.4em;">
@@ -85,13 +85,21 @@ function addGroup(): void {
       return tip("Element with this name already exists. Provide a unique name", false, "error");
     if (Number.isFinite(+group.charAt(0))) return tip("Group name should start with a letter", false, "error");
 
-    select("#routes")
-      .append("g")
-      .attr("id", group)
-      .attr("stroke", "#000000")
-      .attr("stroke-width", 0.5)
-      .attr("stroke-dasharray", "1 0.5")
-      .attr("stroke-linecap", "butt");
+    // the store is authoritative: seed an entry so style edits and presets can address the group
+    const template = styles.routes.groups.roads || Object.values(styles.routes.groups)[0];
+    const groupStyle = structuredClone(template);
+    Object.assign(groupStyle.attrs, {
+      stroke: "#000000",
+      "stroke-width": 0.5,
+      "stroke-dasharray": "1 0.5",
+      "stroke-linecap": "butt"
+    });
+    styles.routes.groups[group] = groupStyle;
+
+    const groupEl = select("#routes").append("g").attr("id", group).attr("data-group", group);
+    for (const [attr, value] of Object.entries(groupStyle.attrs)) {
+      if (value !== null && value !== undefined) groupEl.attr(attr, value);
+    }
     ensureEl<HTMLSelectElement>("routeGroup").options.add(new Option(group, group));
     addLines();
 
@@ -107,8 +115,11 @@ function removeGroup(group: string): void {
     confirm: "Remove",
     onConfirm: () => {
       pack.routes.filter((r: Route) => r.group === group).forEach(Routes.remove);
-      if (!DEFAULT_GROUPS.includes(group)) select("#routes").select(`#${group}`).remove();
-      Layers.draw("labels");
+      if (!DEFAULT_GROUPS.includes(group)) {
+        select("#routes").select(`#${group}`).remove();
+        delete styles.routes.groups[group];
+      }
+      Layers.draw("routes", "labels");
       addLines();
     }
   });

@@ -35,11 +35,11 @@ const GRAND_EDITORS: Record<string, Opener> = {
   emblems: target => Controllers.EmblemsEditor.open(undefined, undefined, undefined, target),
   routes: target => Controllers.RouteEditor.open(target.id),
   burgIcons: target => Controllers.BurgEditor.open(Number(target.dataset.id)),
+  journeys: (_target, parent) => Controllers.JourneyEditor.open(Number(parent.id.replace("journey", ""))),
   markers: target => Controllers.MarkersEditor.open(undefined, target),
   ruler: () => Controllers.MeasurersEditor.open(),
   goodsIcons: () => Controllers.GoodsEditor.open(),
   goodsBurgs: (_target, parent) => Controllers.ProductionOverview.open(Number(parent.dataset.id)),
-  coastline: target => Controllers.CoastlineVertexEditor.open(target),
   lakes: target => Controllers.LakesEditor.open(target),
   markets: (target, parent) => {
     if (target.tagName !== "path") Controllers.MarketOverview.open(Number(parent.dataset.id));
@@ -77,5 +77,3 @@ function onClick(event: MouseEvent): void {
   const open = PARENT_EDITORS[parent.id] || GRAND_EDITORS[grand.id] || GREAT_EDITORS[great.id];
   open?.(target, parent);
 }
-
-window.applyDefaultViewboxEvents = applyDefaultViewboxEvents;

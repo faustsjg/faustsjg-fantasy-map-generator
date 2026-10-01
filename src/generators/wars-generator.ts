@@ -135,7 +135,7 @@ class WarsModule {
       for (const province of pack.provinces ?? []) {
         if (province.i && !province.removed && province.state === defender.i && !isPinned(province)) {
           province.state = attacker.i;
-          province.annexedYear = options.year;
+          province.annexedYear = options.map.lore.calendar.year;
         }
       }
 
@@ -172,7 +172,7 @@ class WarsModule {
     if (province.lock || isSeatLocked(province)) return; // locked provinces never change hands, regardless of caller
     detachLockedBurgs(province.i); // any other locked burg inside stays behind as an enclave
     province.state = to.i;
-    province.annexedYear = options.year; // freshly conquered - a rebellion risk factor, decaying over time
+    province.annexedYear = options.map.lore.calendar.year; // freshly conquered - a rebellion risk factor, decaying over time
     for (const cellId of pack.cells.i) {
       if (pack.cells.province?.[cellId] === province.i) pack.cells.state[cellId] = to.i;
     }

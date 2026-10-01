@@ -54,7 +54,7 @@ class DetailExpanderModule {
     const oldPoints = grid.points;
     const oldHeights = grid.cells.h;
 
-    grid = Grid.generate(seed, graphWidth, graphHeight);
+    grid = Grid.generate(options.map.seed, options.map.graph.width, options.map.graph.height);
     this.resampleHeightmap(oldPoints, oldHeights);
     this.scaleUpCulturesAndStates(oldCells, newCells);
 

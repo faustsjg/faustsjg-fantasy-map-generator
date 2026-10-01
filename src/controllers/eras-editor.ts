@@ -371,11 +371,11 @@ function selectEra(index: number, highlight = false): void {
   pack.routes = structuredClone(era.routes);
   pack.cells.routes = Routes.buildLinks(pack.routes);
   Routes.sync();
-  // the year LABEL below always matched the era shown, but options.year itself (what
+  // the year LABEL below always matched the era shown, but options.map.lore.calendar.year itself (what
   // ErasModule.generate() actually reads as "now") didn't - clicking Generate while looking at an
   // older era would silently start the new run from whatever year the last run ended on, not this
   // era's own year
-  options.year = era.year;
+  options.map.lore.calendar.year = era.year;
   currentEraIndex = index;
 
   unfog();

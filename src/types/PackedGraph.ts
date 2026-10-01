@@ -4,7 +4,7 @@ import type { Burg } from "@/generators/burgs-generator";
 import type { Character } from "@/generators/characters-generator";
 import type { Culture } from "@/generators/cultures-generator";
 import type { Era } from "@/generators/eras-generator";
-import type { Feature } from "@/generators/features";
+import type { Feature } from "@/generators/features-generator";
 import type { Good } from "@/generators/goods-generator";
 import type { Guild } from "@/generators/guilds-generator";
 import type { Ice } from "@/generators/ice-generator";
@@ -18,6 +18,7 @@ import type { River } from "@/generators/river-generator";
 import type { Route } from "@/generators/routes-generator";
 import type { State } from "@/generators/states-generator";
 import type { Zone } from "@/generators/zones-generator";
+import type { Journey } from "./Journey";
 
 export type TypedArray = Uint8Array | Uint16Array | Uint32Array | Int8Array | Int16Array | Float32Array | Float64Array;
 
@@ -81,4 +82,5 @@ export interface PackedGraph {
   guilds?: Guild[];
   characters?: Character[];
   nextPersistentId?: number; // monotonic counter behind State.persistentId/Province.persistentId
+  journeys: Journey[];
 }

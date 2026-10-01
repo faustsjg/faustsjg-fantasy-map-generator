@@ -90,7 +90,7 @@ describe("ErasModule.generate", () => {
     // file is about population/succession math, not burg-group thresholds, so stub it a no-op
     globalThis.window.Burgs = { defineGroup: vi.fn() } as any;
 
-    globalThis.options = { year: 1000 } as any;
+    globalThis.options = { map: { lore: { calendar: { year: 1000 } } } } as any;
     globalThis.pack = {
       states: [
         { i: 0, name: "Neutrals" },
@@ -127,11 +127,11 @@ describe("ErasModule.generate", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns nothing and leaves options.year untouched for eraCount < 1", () => {
+  it("returns nothing and leaves options.map.lore.calendar.year untouched for eraCount < 1", () => {
     const eras = ErasModule.generate(0, 100);
     expect(eras).toEqual([]);
     expect(regenerate).not.toHaveBeenCalled();
-    expect(globalThis.options.year).toBe(1000);
+    expect(globalThis.options.map.lore.calendar.year).toBe(1000);
   });
 
   it("takes an immediate snapshot for a single era without calling regenerate", () => {
@@ -187,7 +187,7 @@ describe("ErasModule.generate", () => {
     expect(applySuccession).toHaveBeenCalledWith(50);
   });
 
-  it("stops generating further eras once States.regenerate reports every state locked, without advancing options.year for that attempt", () => {
+  it("stops generating further eras once States.regenerate reports every state locked, without advancing options.map.lore.calendar.year for that attempt", () => {
     regenerate.mockReturnValueOnce({}).mockReturnValueOnce({ error: "Unable to regenerate as all states are locked" });
 
     const eras = ErasModule.generate(4, 50);
@@ -196,8 +196,8 @@ describe("ErasModule.generate", () => {
     // generation stops there instead of pushing a stale 3rd/4th era
     expect(eras.map((e: any) => e.year)).toEqual([1000, 1050]);
     expect(regenerate).toHaveBeenCalledTimes(2);
-    // options.year should reflect only the eras actually generated, not the failed attempt
-    expect(globalThis.options.year).toBe(1050);
+    // options.map.lore.calendar.year should reflect only the eras actually generated, not the failed attempt
+    expect(globalThis.options.map.lore.calendar.year).toBe(1050);
     // the failed era never regenerated, so nothing downstream should run for it either
     expect(applySuccession).toHaveBeenCalledTimes(1);
   });
@@ -208,7 +208,7 @@ describe("ErasModule.generate", () => {
     const eras = ErasModule.generate(2, 50);
 
     expect(eras).toHaveLength(1); // only the initial snapshot - the one attempted era never completed
-    expect(globalThis.options.year).toBe(1000);
+    expect(globalThis.options.map.lore.calendar.year).toBe(1000);
     // applySuccession() locked both states and removed the small non-capital burg before
     // regenerate() ever ran and aborted - all of that must be undone, not left dangling
     expect(globalThis.pack.states[1].lock).toBeUndefined();
@@ -337,7 +337,7 @@ describe("ErasModule.generate", () => {
     globalThis.pack.provinces = [0, { i: 1, state: 1, removed: false, annexedYear: 1100, burg: 1 }] as any;
     globalThis.pack.cells.province = [0, 1, 0, 0] as any;
 
-    ErasModule.generate(2, 100); // options.year becomes 1000 + 100 = 1100, matching annexedYear above
+    ErasModule.generate(2, 100); // options.map.lore.calendar.year becomes 1000 + 100 = 1100, matching annexedYear above
 
     // gauss() stubbed to its own mean - war retention mean is 0.72 (72% kept, 28% lost to war and
     // the disease that follows it), overriding growth entirely rather than combining with it

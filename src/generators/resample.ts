@@ -1,7 +1,9 @@
 import { mean, quadtree } from "d3";
 import { clipPolyline } from "lineclip";
+import { getPointsNumber } from "@/data/graph-density";
 import { Measurers } from "@/generators/measurers-generator";
 import type { GridGraph } from "../types/GridGraph";
+import type { JourneyPoint } from "../types/Journey";
 import type { PackedGraph } from "../types/PackedGraph";
 import { getPolesOfInaccessibility, isWater, rn, unique } from "../utils";
 import type { River } from "./river-generator";
@@ -18,7 +20,6 @@ interface ResamplerProcessOptions {
 type ParentMapDefinition = {
   grid: GridGraph;
   pack: PackedGraph;
-  notes: any[];
 };
 
 class Resampler {
@@ -73,7 +74,7 @@ class Resampler {
   }
 
   private isInMap(x: number, y: number) {
-    return x >= 0 && x <= graphWidth && y >= 0 && y <= graphHeight;
+    return x >= 0 && x <= options.map.graph.width && y >= 0 && y <= options.map.graph.height;
   }
 
   private restoreCellData(
@@ -234,7 +235,7 @@ class Resampler {
 
     pack.burgs = parentMap.pack.burgs.map(burg => {
       if (!burg.i || burg.removed) return burg;
-      burg.population! *= scale; // adjust for populationRate change
+      burg.population! *= scale; // adjust for options.map.units.population.scale change
 
       const [xp, yp] = projection(burg.x, burg.y);
       if (!this.isInMap(xp, yp)) return { ...burg, removed: true, lock: false };
@@ -274,11 +275,7 @@ class Resampler {
         (acc, regiment) => {
           const [xPos, yPos] = projection(regiment.x, regiment.y);
 
-          if (!this.isInMap(xPos, yPos)) {
-            const noteIndex = notes.findIndex(n => n.id === `regiment${state.i}-${regiment.i}`);
-            if (noteIndex !== -1) notes.splice(noteIndex, 1);
-            return acc;
-          }
+          if (!this.isInMap(xPos, yPos)) return acc;
 
           const cellCoords = projection(...parentMap.pack.cells.p[regiment.cell]);
           const cell = this.isInMap(...cellCoords) ? Pack.findCell(...cellCoords, Infinity)! : state.center;
@@ -315,7 +312,7 @@ class Resampler {
         });
         if (points.length < 2) return null;
 
-        const bbox: [number, number, number, number] = [0, 0, graphWidth, graphHeight];
+        const bbox: [number, number, number, number] = [0, 0, options.map.graph.width, options.map.graph.height];
         // @types/lineclip is incorrect - lineclip returns Point[][] (array of line segments), not Point[]
         const clippedSegments = clipPolyline(points, bbox) as unknown as Point[][];
         if (!clippedSegments[0]?.length) return null;
@@ -379,6 +376,7 @@ class Resampler {
       if (parentFeature.subtype) feature.subtype = parentFeature.subtype;
       if (parentFeature.group) feature.group = parentFeature.group;
       if (parentFeature.name) feature.name = parentFeature.name;
+      if (parentFeature.note) feature.note = parentFeature.note;
       if (parentFeature.height) feature.height = parentFeature.height;
     });
   }
@@ -414,18 +412,50 @@ class Resampler {
     });
   }
 
-  process(options: ResamplerProcessOptions): void {
-    const { projection, inverse, scale } = options;
+  private restoreJourneys(parentMap: ParentMapDefinition, projection: (x: number, y: number) => [number, number]) {
+    let dropped = 0;
+    pack.journeys = (parentMap.pack.journeys ?? [])
+      .map(journey => {
+        const segments = journey.segments
+          .map(seg => {
+            const points: JourneyPoint[] = [];
+            for (const [parentX, parentY] of seg.points) {
+              const [x, y] = projection(parentX, parentY);
+              // a clipped path can't stay valid cell-by-cell, so a segment leaving the map goes whole
+              if (!this.isInMap(x, y)) return null;
+              points.push([rn(x, 2), rn(y, 2), Pack.findCell(x, y, Infinity) as number]);
+            }
+            if (!points.length) return null;
+            return {
+              ...seg,
+              points,
+              from: points[0][2],
+              to: points[points.length - 1][2],
+              distance: Journeys.getPathLength(points)
+            };
+          })
+          .filter(seg => seg !== null);
+        dropped += journey.segments.length - segments.length;
+        if (!segments.length) return null;
+        return { ...journey, segments };
+      })
+      .filter(journey => journey !== null);
+
+    if (dropped) WARN && console.warn(`Resample: dropped ${dropped} journey segment(s) outside the new map`);
+  }
+
+  process(config: ResamplerProcessOptions): void {
+    const { projection, inverse, scale } = config;
     const parentMap = {
       grid: structuredClone(grid),
-      pack: structuredClone(pack),
-      notes: structuredClone(notes)
+      pack: structuredClone(pack)
     };
     const riversData = this.saveRiversData(pack.rivers);
 
-    grid = Grid.generate(seed, graphWidth, graphHeight);
+    options.map.graph.points = getPointsNumber(options.generation.graph.density);
+    const { width, height } = options.map.graph;
+    grid = Grid.generate(options.map.seed, width, height);
     pack = {} as PackedGraph;
-    notes = parentMap.notes;
 
     this.resamplePrimaryGridData(parentMap, inverse, scale);
 
@@ -452,6 +482,7 @@ class Resampler {
     this.restoreFeatureDetails(parentMap, inverse);
     this.restoreMarkers(parentMap, projection);
     this.restoreZones(parentMap, projection, scale);
+    this.restoreJourneys(parentMap, projection);
     this.restoreEconomy(parentMap);
     for (const state of pack.states) {
       if (state.label) state.label.pathPoints = undefined;
@@ -465,8 +496,6 @@ class Resampler {
         label: { ...addedLabel.label, pathPoints: addedLabel.label.pathPoints?.map(([x, y]) => projection(x, y)) }
       };
     });
-
-    logStats();
   }
 }
 

@@ -1,6 +1,7 @@
-import { select } from "d3";
+import { type Selection, select } from "d3";
 import { closeDialogs, confirmationDialog, destroyDialog } from "@/components/dialog/dialog-helpers";
 import { Layers } from "@/components/layers";
+import { Notes } from "@/components/notes";
 import { clearMainTip, tip } from "@/components/tooltips";
 import { applyDefaultViewboxEvents } from "@/components/viewbox-events";
 import { Controllers } from "@/controllers";
@@ -9,14 +10,14 @@ import { EmblemRenderer } from "@/renderers/emblems/renderer";
 import { getHeight, openURL, speak } from "@/utils";
 import { MAX_ZOOM, PAN_ZOOM_IDENTITY, type PanZoom, panBy, zoomAt } from "@/utils/panZoomUtils";
 import type { Burg } from "../generators/burgs-generator";
-import { convertTemperature, ensureEl, getPointer, getTemperatureLikeness, rand, rn } from "../utils";
+import type { Market } from "../generators/markets-generator";
+import { convertTemperature, ensureEl, escapeHtml, getPointer, getTemperatureLikeness, rand, rn } from "../utils";
 import type { PromptOptions } from "../utils/commonUtils";
 
 declare const prompt: (text: string, options: PromptOptions, callback: (value: string | number) => void) => void;
 
-// the id the editor was opened for: not a DOM lookup, since the burg's icon and label are only
-// materialized when it's inside the viewport and may not be at editor-open time
-let selectedId = 0;
+let selected: Selection<any, any, any, any> | null = null;
+let selectedId: number | null = null;
 let previewTransform: PanZoom = { ...PAN_ZOOM_IDENTITY };
 let previewMaxZoom = MAX_ZOOM;
 let previewCommittedK = 1;
@@ -28,7 +29,9 @@ function open(id: number | string): void {
   closeDialogs(".stable");
   Layers.show("burgIcons", "labels");
 
-  selectedId = Number(id);
+  selectedId = +id;
+  selected = select<any, unknown>("#labels").select(`[data-label-type='burg'][data-id='${id}']`);
+  if (!selected.size()) selected = select<any, unknown>("#burgIcons").select(`[data-id='${id}']`);
 
   renderDialog();
   updateGroupsList();
@@ -173,9 +176,9 @@ function renderDialog(): void {
               <div class="label">Wealth</div>
               <span id="burgWealth"></span>
             </div>
-            <div data-tip="Treasury balance after production, purchases, and sales">
-              <div class="label">Treasury</div>
-              <span id="burgTreasury"></span>
+            <div data-tip="Set treasury balance. Production won't be changed automatically">
+              <div class="label"><label for="burgTreasury">Treasury:</label></div>
+              <input id="burgTreasury" type="number" step="0.01" style="width: 9em" /> 🟡
             </div>
           </div>
         </div>
@@ -227,7 +230,7 @@ function renderDialog(): void {
           data-tip="Relocate burg. Click on map to move the burg"
           class="icon-map-pin"
         ></button>
-        <button id="burglLegend" data-tip="Edit free text notes (legend) for this burg" class="icon-edit"></button>
+        ${Notes.getButton("burglLegend", "this burg")}
         <button id="burgLock" class="icon-lock-open" onmouseover="showElementLockTip(event)"></button>
         <button
           id="burgRemove"
@@ -248,6 +251,7 @@ function renderDialog(): void {
   ensureEl("burgCulture").addEventListener("change", changeCulture);
   ensureEl("burgNameReCulture").addEventListener("click", generateNameCulture);
   ensureEl("burgPopulation").addEventListener("change", changePopulation);
+  ensureEl("burgTreasury").addEventListener("change", changeTreasury);
   ensureEl("burgBody")
     .querySelectorAll<HTMLElement>(".burgFeature")
     .forEach(el => void el.addEventListener("click", toggleFeature));
@@ -277,13 +281,13 @@ function renderDialog(): void {
 }
 
 function getSelectedId(): number {
-  return selectedId;
+  return selectedId ?? +selected!.attr("data-id");
 }
 
 function updateGroupsList(): void {
   const groupSelect = ensureEl<HTMLSelectElement>("burgGroup");
   groupSelect.options.length = 0; // remove all options
-  for (const { name } of options.burgs.groups) {
+  for (const { name } of options.map.burgs.groups) {
     groupSelect.options.add(new Option(name, name));
   }
 }
@@ -299,9 +303,11 @@ function updateBurgValues(): void {
   ensureEl<HTMLInputElement>("burgName").value = b.name!;
   ensureEl<HTMLSelectElement>("burgGroup").value = b.group!;
   ensureEl<HTMLSelectElement>("burgType").value = b.type || "Generic";
-  ensureEl<HTMLInputElement>("burgPopulation").value = String(rn(b.population! * populationRate * urbanization));
+  ensureEl<HTMLInputElement>("burgPopulation").value = String(
+    rn(b.population! * options.map.units.population.scale * options.map.units.population.urbanization.rate)
+  );
   ensureEl("burgWealth").innerHTML = `🟡 ${rn(b.population! > 0 ? (b.product || 0) / b.population! : 0, 2)}`;
-  ensureEl("burgTreasury").innerHTML = `🟡 ${rn(b.treasury || 0, 2)}`;
+  ensureEl<HTMLInputElement>("burgTreasury").value = String(rn(b.treasury || 0, 2));
   ensureEl("burgEditAnchorStyle").style.display = +b.port! ? "inline-block" : "none";
 
   // update list and select culture
@@ -383,11 +389,21 @@ function changePopulation(): void {
   const burg = pack.burgs[id];
 
   pack.burgs[id].population = rn(
-    ensureEl<HTMLInputElement>("burgPopulation").valueAsNumber / populationRate / urbanization,
+    ensureEl<HTMLInputElement>("burgPopulation").valueAsNumber /
+      options.map.units.population.scale /
+      options.map.units.population.urbanization.rate,
     4
   );
   updateBurgPreview(burg);
   void Controllers.ErasEditor.notifyEdited();
+}
+
+function changeTreasury(this: HTMLInputElement): void {
+  const burg = pack.burgs[getSelectedId()];
+  const treasury = this.valueAsNumber;
+  if (Number.isFinite(treasury)) burg.treasury = rn(treasury, 2);
+  else tip("Enter a valid treasury amount", false, "error");
+  this.value = String(rn(burg.treasury || 0, 2));
 }
 
 function toggleFeature(this: HTMLElement): void {
@@ -396,6 +412,14 @@ function toggleFeature(this: HTMLElement): void {
 
   const feature = this.dataset.feature!;
   const value = Number(this.classList.contains("inactive"));
+
+  if (feature === "plaza" && !value) {
+    const market = pack.markets?.find(m => m.centerBurgId === burgId);
+    if (market) {
+      confirmRemoveMarket(market);
+      return;
+    }
+  }
 
   if (feature === "port") togglePort(burgId);
   else if (feature === "capital") toggleCapital(burgId);
@@ -408,13 +432,23 @@ function toggleFeature(this: HTMLElement): void {
   void Controllers.ErasEditor.notifyEdited();
 }
 
+function confirmRemoveMarket(market: Market): void {
+  confirmationDialog({
+    title: "Remove market",
+    message: `This burg is the center of the market "${escapeHtml(Markets.getName(market))}". Remove the market?<br>This action cannot be reverted`,
+    confirm: "Remove",
+    onConfirm: () => {
+      Markets.removeMarket(market.i);
+      Layers.draw("markets");
+      updateBurgValues();
+    }
+  });
+}
+
 function togglePort(burgId: number): void {
   const burg = pack.burgs[burgId];
   if (burg.port) {
     burg.port = 0;
-
-    const anchor = document.querySelector(`#anchors [data-id='${burgId}']`);
-    if (anchor) anchor.remove();
   } else {
     const { cells, features } = pack;
     const haven = cells.haven[burg.cell];
@@ -436,16 +470,8 @@ function togglePort(burgId: number): void {
     }
 
     burg.port = portFeatureId;
-
-    select("#anchors")
-      .select(`#${burg.group}`)
-      .append("use")
-      .attr("href", "#icon-anchor")
-      .attr("id", `anchor${burg.i}`)
-      .attr("data-id", burg.i)
-      .attr("x", burg.x)
-      .attr("y", burg.y);
   }
+  Layers.draw("burgIcons");
 }
 
 function toggleCapital(burgId: number): void {
@@ -510,9 +536,11 @@ function hideStyleSection(): void {
   ensureEl("burgStyleSection").style.display = "none";
 }
 
+// the style editor selects groups by bare name, never by the DOM id of the rendered node
 function editGroupLabelStyle(): void {
+  const burg = pack.burgs[getSelectedId()];
   closeDialogs(".stable");
-  editStyle("labels", pack.burgs[getSelectedId()].group);
+  editStyle("labels", burg.label?.group || burg.group);
 }
 
 function editBurgLabel(): void {
@@ -522,13 +550,15 @@ function editBurgLabel(): void {
 }
 
 function editGroupIconStyle(): void {
+  const burg = pack.burgs[getSelectedId()];
   closeDialogs(".stable");
-  editStyle("burgIcons", pack.burgs[getSelectedId()].group);
+  editStyle("burgIcons", burg.group);
 }
 
 function editGroupAnchorStyle(): void {
+  const burg = pack.burgs[getSelectedId()];
   closeDialogs(".stable");
-  editStyle("anchors", pack.burgs[getSelectedId()].group);
+  editStyle("anchors", burg.group);
 }
 
 function getPreviewViewport(): { width: number; height: number } {
@@ -752,19 +782,8 @@ function relocateBurgOnClick(this: SVGGElement, event: any): void {
     return;
   }
 
-  // change UI
   const x = rn(point[0], 2);
   const y = rn(point[1], 2);
-
-  select("#burgIcons").select(`#burg${id}`).attr("x", x).attr("y", y);
-
-  const anchor = select("#anchors").select(`use[data-id='${id}']`);
-  if (anchor.size()) {
-    const size = +anchor.attr("width");
-    const xa = rn(x - size * 0.47, 2);
-    const ya = rn(y - size * 0.47, 2);
-    anchor.attr("transform", null).attr("x", xa).attr("y", ya);
-  }
 
   // change data
   cells.burg[burg.cell] = 0;
@@ -777,18 +796,18 @@ function relocateBurgOnClick(this: SVGGElement, event: any): void {
 
   // the label snaps back to the relocated burg, so its custom path is no longer valid
   if (burg.label) Object.assign(burg.label, { dx: 0, dy: 0, pathPoints: undefined });
-  Layers.draw("labels");
+  Layers.draw("burgIcons", "labels");
 
   if (event.shiftKey === false) toggleRelocateBurg();
 }
 
 function editBurgLegend(): void {
-  const id = getSelectedId();
-  void Controllers.NotesEditor.open(`burg${id}`, pack.burgs[id].name);
+  void Controllers.NotesEditor.open({ type: "burg", id: getSelectedId() });
 }
 
 function showTemperatureGraph(): void {
-  void Controllers.TemperatureGraph.open(getSelectedId());
+  const id = getSelectedId();
+  void Controllers.TemperatureGraph.open(id);
 }
 
 function showProductionOverview(): void {
@@ -853,7 +872,9 @@ function editBurgGroups(): void {
 }
 
 function closeBurgEditor(): void {
+  clearTimeout(previewSettleTimer);
   if (ensureEl("burgRelocate").classList.contains("pressed")) toggleRelocateBurg();
+  selected = null;
   $("#burgEditor").dialog("destroy");
   ensureEl("burgEditor").remove();
 }

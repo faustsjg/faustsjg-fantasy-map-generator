@@ -1,3 +1,4 @@
+import { isMobile } from "@/services/platform";
 import { debounce, ensureEl, findEl } from "@/utils";
 
 type TipType = "info" | "success" | "warn" | "error";
@@ -10,6 +11,8 @@ const TIP_BACKGROUND: Record<TipType, string> = {
 };
 
 const getTooltip = () => ensureEl("tooltip");
+
+let autoClearTimeout: number | undefined;
 
 /**
  * Show a message in the tooltip line
@@ -28,7 +31,12 @@ export function tip(message: string, main = false, type: TipType = "info", time 
     tooltip.dataset.color = tooltip.style.background;
   }
 
-  if (time) setTimeout(clearMainTip, time);
+  // Only a pinned or timed tip supersedes a pending auto-clear. Transient hover tips
+  // must leave it alone, or moving the mouse would keep a timed message alive forever.
+  if (main || time) {
+    if (autoClearTimeout) clearTimeout(autoClearTimeout);
+    autoClearTimeout = time ? window.setTimeout(clearMainTip, time) : undefined;
+  }
 }
 
 export function showMainTip(): void {
@@ -38,6 +46,10 @@ export function showMainTip(): void {
 }
 
 export function clearMainTip(): void {
+  if (autoClearTimeout) {
+    clearTimeout(autoClearTimeout);
+    autoClearTimeout = undefined;
+  }
   const tooltip = getTooltip();
   tooltip.dataset.color = "";
   tooltip.dataset.main = "";
@@ -54,7 +66,7 @@ export function showDataTip(event: Event): void {
   if (!dataTip) return;
 
   const shortcut = target.dataset.shortcut;
-  if (shortcut && !MOBILE) dataTip += `. Shortcut: ${shortcut}`;
+  if (shortcut && !isMobile()) dataTip += `. Shortcut: ${shortcut}`;
 
   tip(dataTip);
 }
@@ -82,5 +94,4 @@ export const Tooltips = { tip, showMainTip, clearMainTip, showDataTip, showEleme
 
 window.tip = tip;
 window.clearMainTip = clearMainTip;
-window.showDataTip = showDataTip;
 window.showElementLockTip = showElementLockTip;

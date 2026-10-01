@@ -76,5 +76,3 @@ export function showInfo(): void {
 }
 
 export const AppInfo = { open: showInfo };
-
-window.showInfo = showInfo;

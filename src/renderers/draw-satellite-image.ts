@@ -3,7 +3,7 @@
 // top-down image, without ever creating a 3D scene, camera, or mesh - the
 // shader is a fullscreen-triangle pass, purely a function of grid/pack data,
 // so it's already a flat top-down bake. Generated once per map (cached by
-// mapId), then displayed as a plain <image>.
+// map, by its creation time in mapHistory), then displayed as a plain <image>.
 
 import { tip } from "../components/tooltips";
 import { createEl, ensureEl } from "../utils/nodeUtils";
@@ -26,6 +26,8 @@ const MAX_OUTPUT = 4096;
 
 let cachedDataUrl: string | null = null;
 let cachedMapId: number | null = null;
+
+const currentMapId = (): number | null => mapHistory.at(-1)?.created ?? null;
 let bakingPromise: Promise<void> | null = null;
 
 async function bakeSatelliteImage(): Promise<{ dataUrl: string; width: number; height: number } | null> {
@@ -90,8 +92,8 @@ function renderImage(dataUrl: string): void {
   const image = createEl<SVGImageElement>("image", "satelliteImageContent", {
     x: "0",
     y: "0",
-    width: String(graphWidth),
-    height: String(graphHeight),
+    width: String(options.map.graph.width),
+    height: String(options.map.graph.height),
     preserveAspectRatio: "none",
     href: dataUrl
   });
@@ -99,7 +101,7 @@ function renderImage(dataUrl: string): void {
 }
 
 export function drawSatelliteImage(): void {
-  if (cachedMapId === mapId && cachedDataUrl) {
+  if (cachedMapId === currentMapId() && cachedDataUrl) {
     renderImage(cachedDataUrl);
     return;
   }
@@ -114,7 +116,7 @@ export function drawSatelliteImage(): void {
         return;
       }
       cachedDataUrl = result.dataUrl;
-      cachedMapId = mapId;
+      cachedMapId = currentMapId();
       renderImage(result.dataUrl);
     })
     .finally(() => {

@@ -104,7 +104,7 @@ describe("RebellionsModule.resolve", () => {
   let collectStatistics: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    globalThis.options = { year: 1000 } as any;
+    globalThis.options = { map: { lore: { calendar: { year: 1000 } } } } as any;
     collectStatistics = vi.fn();
     globalThis.window = globalThis.window || ({} as any);
     globalThis.window.States = { collectStatistics } as any;

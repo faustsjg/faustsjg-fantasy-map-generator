@@ -31,17 +31,19 @@ This glossary covers core terminology, data structures, and concepts used throug
 - **Religion**: A belief system and organization spreading across cells and burgs.
 - **Biome**: A type of environment (e.g., desert, forest, tundra) assigned to cells.
 - **Heightmap**: A grid of elevation values used to generate terrain.
-- **Feature**: A special map object (ocean, island, lake, etc.).
+- **Feature**: A contiguous area of cells enclosed by a coastline or the map border: an island, a lake or an ocean. Features are produced by the heightmap and can only be added or removed through it.
+- **Feature Type**: What a Feature fundamentally is: `island`, `lake` or `ocean`. Derived from geography, never user-editable.
+- **Feature Subtype**: The Feature's classification within its type (`continent`/`island`/`isle`/`lake_island`; `freshwater`/`salt`/`dry`/`sinkhole`/`frozen`/`lava`; `ocean`/`sea`/`gulf`). Domain-meaningful: generators read it. User-editable, regeneration classifies it again. _Avoid_: kind, class
+- **Feature Group**: The SVG group a Feature is drawn in. Purely a rendering choice with no domain meaning, independent of the Subtype. Lakes may use stock or user-created groups; islands are fixed to `sea_island` / `lake_island`. _Avoid_: style group, layer group
 - **River**: A water flow starting from a source cell and following the heightmap down to a lake or ocean.
 - **Lake**: A fresh or salt water body contained entirely within land cells.
 - **Route**: A road, trail, or sea lane connecting burgs.
 - **Marker**: A specific point of interest placed on the map (e.g., volcano, battlefield, ruin).
+- **Journey**: A route travelled by a party — a quest, a caravan run, a raid — made of ordered Segments. Distinct from a [[Route]], which is a road on the ground that a Journey may follow. Stored in `pack.journeys`.
 - **Zone**: An arbitrary highlighted area of the map defined for custom purposes (e.g., danger zone, magic zone).
 - **Diplomacy**: The system of political relationships (allies, enemies, neutral, vassals) between different States.
 - **Regiment / Military**: The armed forces belonging to States or Burgs, represented by units.
 - **Good**: A resource or product (e.g., wood, iron, grain) with properties like value, demand, and recipes. Raw goods have a `distribution`; manufactured goods have `recipes`.
-- **Biome Output**: The baseline production *amount* of a good per unit of rural population in a given biome (stored as `good.biomeOutput`). Distinct from a Good Multiplier. _Avoid_: biome production, biome yield.
-- **Good Multiplier**: A per-dimension scalar (number) that modifies a good's production when a cell matches a specific cultureType, culture id, state id, religion id, or biome id. Absent or 1 means no effect; 0 means no production. Multiple active multipliers combine multiplicatively. _Avoid_: production modifier, culture modifier.
 - **Market**: A regional economic hub anchored at a burg. Owns per-good stock and price, mediates all flows between rural cells, burgs, and other markets.
 - **Deal**: A record of a single transaction in the trade/markets system (`{seller, sellerType, buyer, buyerType, good, units, price, tax?}`). Stored in `pack.deals` and consumed by the trade animation and trade details UI. The optional `tax` field carries the sales-tax amount in currency units credited to the seller's state treasury.
 - **Treasury**: Per-state accumulated balance in currency units. Fed each cycle by [[Sales Tax]] on deals where the seller belongs to the state and by [[Poll Tax]] on the state's population. Stored as `state.treasury`. Neutrals (state 0) keep treasury at 0.
@@ -51,11 +53,11 @@ This glossary covers core terminology, data structures, and concepts used throug
 - **Demand Category**: One of `food | utilities | construction | military | luxury`, evaluated in `DEMAND_PRIORITY` order during production and demand fill.
 - **Namesbase**: A collection of linguistic rules, prefixes, and suffixes used to procedurally generate names for map entities.
 - **Emblem**: A heraldic shield or flag representing a State, Province, or Burg.
-- **Note**: User-defined text attached to a specific map entity (cell, burg, state) containing custom lore or description.
+- **Note**: User-defined html text describing a map entity, stored on the entity as `note?: string`. Shown in the notes box when the entity's element is hovered, and edited from that entity's editor or from the Notes Editor. A note cannot exist without an entity to own it.
 - **Icon**: A small graphic representing a good, biome, or feature.
 - **Label**: Display text owned by a map entity — a State, Province, Burg, River, Route, or Added Label. Every label is anchored at its entity's position and drawn as positioned text there, unless it has path points — then the text is curved along them. Any label can be switched between the two in the Label Editor.
 - **Added Label**: A free-standing map entity created by the user, whose only purpose is to carry a Label. It supplies the position that other label owners get from their own geometry.
-- **Label Group**: An ordered, reusable label policy and visual style. Policy fields live in `options.labels.groups`; typography and offsets live in `style.labels.groups`. Any label type can use any Label Group without changing how that entity is rendered.
+- **Label Group**: An ordered, reusable label policy and visual style. Policy fields live in `options.map.labels.groups`; typography and offsets live in `style.labels.groups`. Any label type can use any Label Group without changing how that entity is rendered.
 - **Label Group type**: The Label Group's organizational category (`states`, `burgs`, `provinces`, or `added`). It controls defaults and UI grouping, not rendering compatibility.
 - **Label Group layer dependency**: An optional layer-toggle id that makes a Label Group visible only while that layer is on.
 - **Label name mode**: A Label Group policy selecting automatic, short, or full names for generated State and Province labels.

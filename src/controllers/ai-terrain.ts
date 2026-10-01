@@ -52,8 +52,8 @@ function toggle(): void {
 
 function previewInfluenceArea(event: MouseEvent): void {
   const point = pointer(event, event.currentTarget as SVGGElement);
-  const xPercent = (point[0] / graphWidth) * 100;
-  const yPercent = (point[1] / graphHeight) * 100;
+  const xPercent = (point[0] / options.map.graph.width) * 100;
+  const yPercent = (point[1] / options.map.graph.height) * 100;
   moveInfluenceBox(boundsAroundPoint(xPercent, yPercent));
 }
 
@@ -69,8 +69,8 @@ function boundsAroundPoint(xPercent: number, yPercent: number): TerrainBounds {
 
 function onMapClick(event: MouseEvent): void {
   const point = pointer(event, event.currentTarget as SVGGElement);
-  const xPercent = (point[0] / graphWidth) * 100;
-  const yPercent = (point[1] / graphHeight) * 100;
+  const xPercent = (point[0] / options.map.graph.width) * 100;
+  const yPercent = (point[1] / options.map.graph.height) * 100;
   const bounds = boundsAroundPoint(xPercent, yPercent);
 
   stop();

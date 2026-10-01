@@ -1,125 +1,67 @@
-import { select } from "d3";
 import { Layers } from "@/components/layers";
 import type { Burg } from "@/generators/burgs-generator";
-import { Scene, ViewportLayers, type ViewportRenderContext } from "@/renderers/viewport/viewport-renderer";
+import { ViewportLayers, type ViewportRenderContext } from "@/renderers/viewport/viewport-renderer";
+import { escapeHtml } from "@/utils/stringUtils";
 
-interface BurgSceneItem {
-  id: string;
-  data: Burg;
-}
-
-const scene = new Scene<BurgSceneItem>();
 const layer = ViewportLayers.register({ id: "burgIcons", render: reconcileBurgIcons });
 
 export const drawBurgIcons = (): void => {
   TIME && console.time("drawBurgIcons");
-  createIconGroups();
-  scene.replace(pack.burgs.filter(b => !b.removed).map(b => ({ id: String(b.i), data: b })));
   layer.render();
   TIME && console.timeEnd("drawBurgIcons");
 };
 
-/** drop the icons, keeping the burg groups: they carry the styles edited in the Style editor */
-export const removeBurgIcons = (): void => {
-  scene.invalidate();
-  for (const icon of Array.from(document.querySelectorAll("#icons use, #icons circle"))) icon.remove();
-};
+function reconcileBurgIcons({ root, bounds }: ViewportRenderContext): void {
+  if (!Layers.isOn("burgIcons")) return;
 
-export const removeBurgIcon = (burgId: number): void => {
-  scene.remove(String(burgId));
-  const existingIcon = document.getElementById(`burg${burgId}`);
-  if (existingIcon) existingIcon.remove();
-
-  const existingAnchor = document.getElementById(`anchor${burgId}`);
-  if (existingAnchor) existingAnchor.remove();
-};
-
-function createIconGroups(): void {
-  // save existing styles and remove all groups
-  document.querySelectorAll("g#burgIcons > g").forEach(group => {
-    style.burgIcons[group.id] = Array.from(group.attributes).reduce((acc: { [key: string]: string }, attribute) => {
-      acc[attribute.name] = attribute.value;
-      return acc;
-    }, {});
-    group.remove();
-  });
-
-  document.querySelectorAll("g#anchors > g").forEach(group => {
-    style.anchors[group.id] = Array.from(group.attributes).reduce((acc: { [key: string]: string }, attribute) => {
-      acc[attribute.name] = attribute.value;
-      return acc;
-    }, {});
-    group.remove();
-  });
-
-  // create groups for each burg group and apply stored or default style
-  const defaultIconStyle = style.burgIcons.town || Object.values(style.burgIcons)[0] || {};
-  const defaultAnchorStyle = style.anchors.town || Object.values(style.anchors)[0] || {};
-  const sortedGroups = [...options.burgs.groups].sort((a, b) => a.order - b.order);
-  for (const { name } of sortedGroups) {
-    const burgGroup = select("#burgIcons").append("g");
-    const iconStyles = style.burgIcons[name] || defaultIconStyle;
-    Object.entries(iconStyles).forEach(([key, value]) => {
-      burgGroup.attr(key, value);
-    });
-    burgGroup.attr("id", name);
-
-    const anchorGroup = select("#anchors").append("g");
-    const anchorStyles = style.anchors[name] || defaultAnchorStyle;
-    Object.entries(anchorStyles).forEach(([key, value]) => {
-      anchorGroup.attr(key, value);
-    });
-    anchorGroup.attr("id", name);
-  }
-}
-
-/**
- * Materialize only the burg icons the viewport can show: an id-diff against what's already
- * there, never a full rebuild. A reconcile fires on every pan/zoom frame, and replacing the node
- * under the pointer between mousedown and mouseup makes the browser swallow the click - the same
- * reasoning the labels and emblems layers already follow.
- */
-function reconcileBurgIcons(context: ViewportRenderContext): void {
-  if (!scene.valid || !Layers.isOn("burgIcons")) return;
-  const { root, bounds } = context;
-
-  for (const { name } of options.burgs.groups) {
-    const iconsGroup = root.querySelector<SVGGElement>(`#burgIcons > g#${CSS.escape(name)}`);
-    if (!iconsGroup) continue;
-
-    const visible = [...scene.values()].map(item => item.data).filter(b => b.group === name && isVisible(b, bounds));
-
-    const icon = iconsGroup.dataset.icon || "#icon-circle";
-    reconcileGroup(iconsGroup, "burg", visible, icon);
-
-    const portGroup = root.querySelector<SVGGElement>(`#anchors > g#${CSS.escape(name)}`);
-    if (!portGroup) continue;
-    reconcileGroup(
-      portGroup,
-      "anchor",
-      visible.filter(b => b.port),
-      "#icon-anchor"
-    );
-  }
-}
-
-function reconcileGroup(group: SVGGElement, prefix: "burg" | "anchor", burgs: Burg[], href: string): void {
-  const visibleIds = new Set(burgs.map(b => `${prefix}${b.i}`));
-  for (const use of group.querySelectorAll(":scope > use")) {
-    if (!visibleIds.has(use.id)) use.remove();
+  const burgsByGroup = new Map<string, Burg[]>();
+  for (const burg of pack.burgs) {
+    if (!burg.i || burg.removed || !burg.group) continue;
+    const group = burgsByGroup.get(burg.group);
+    if (group) group.push(burg);
+    else burgsByGroup.set(burg.group, [burg]);
   }
 
-  const missing = burgs.filter(b => !group.querySelector(`:scope > #${prefix}${b.i}`));
-  if (missing.length) {
-    group.insertAdjacentHTML(
-      "beforeend",
-      missing
-        .map(b => `<use id="${prefix}${b.i}" data-id="${b.i}" href="${href}" x="${b.x}" y="${b.y}"></use>`)
-        .join("")
-    );
-  }
-}
+  const groups = [...options.map.burgs.groups].sort((a, b) => a.order - b.order);
+  for (const type of ["burgIcons", "anchors"] as const) {
+    const container = root.querySelector<SVGGElement>(`#${type}`);
+    if (!container) continue;
+    const groupStyles = styles.burgIcons[type].groups;
+    const defaultStyle = groupStyles.town || Object.values(groupStyles)[0];
+    const isAnchor = type === "anchors";
 
-function isVisible(b: Burg, bounds: ViewportRenderContext["bounds"]): boolean {
-  return b.x >= bounds.x0 && b.x <= bounds.x1 && b.y >= bounds.y0 && b.y <= bounds.y1;
+    const markup: string[] = [];
+
+    for (const { name } of groups) {
+      const groupStyle = groupStyles[name] || defaultStyle;
+      const groupName = escapeHtml(name);
+      const icon = escapeHtml(groupStyle?.options.icon || (isAnchor ? "#icon-anchor" : "#icon-circle"));
+      const size = groupStyle?.options.size ?? 1;
+      const dx = isAnchor ? (groupStyle?.options.dx ?? 0) * size : 0;
+      const dy = isAnchor ? (groupStyle?.options.dy ?? 0) * size : 0;
+      markup.push(`<g id="${groupName}" data-group="${groupName}"`);
+      if (groupStyle) {
+        for (const [key, value] of Object.entries(groupStyle.attrs)) {
+          if (value !== null && value !== undefined) markup.push(` ${key}="${escapeHtml(String(value))}"`);
+        }
+        markup.push(` font-size="${groupStyle.options.size}"`);
+      }
+      markup.push(` data-icon="${icon}"`);
+      markup.push(">");
+
+      // Symbols overflow their viewBox; the tallest burg artwork reaches two em above its anchor.
+      const padding = 2 * (Math.abs(groupStyle?.options.size ?? 1) + (groupStyle?.attrs["stroke-width"] ?? 0));
+      const { x0, y0, x1, y1 } = bounds;
+      for (const { i, x: burgX, y: burgY, port } of burgsByGroup.get(name) || []) {
+        if (isAnchor && !port) continue;
+        const x = burgX + dx;
+        const y = burgY + dy;
+        if (x + padding < x0 || x - padding > x1 || y + padding < y0 || y - padding > y1) continue;
+        markup.push(`<use id="${isAnchor ? "anchor" : "burg"}${i}" data-id="${i}" href="${icon}" x="${x}" y="${y}"/>`);
+      }
+      markup.push("</g>");
+    }
+
+    container.innerHTML = markup.join("");
+  }
 }

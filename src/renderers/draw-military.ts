@@ -1,11 +1,13 @@
 import { color, easeSinInOut, select, transition } from "d3";
 import type { Regiment } from "../generators/military-generator";
-import { rn } from "../utils";
+import { isImageIcon, rn } from "../utils";
 
 export const drawMilitary = (): void => {
   TIME && console.time("drawMilitary");
 
   select<SVGGElement, unknown>("#armies").selectAll("g").remove();
+  // regiment labels size by inheritance from the group
+  select<SVGGElement, unknown>("#armies").attr("font-size", styles.military.options.fontSize);
   for (const state of pack.states) {
     if (!state.i || state.removed) continue;
     drawRegimentsRenderer(state.military || [], state.i);
@@ -15,7 +17,7 @@ export const drawMilitary = (): void => {
 };
 
 const drawRegimentsRenderer = (regiments: Regiment[], s: number): void => {
-  const size = +select<SVGGElement, unknown>("#armies").attr("box-size");
+  const size = styles.military.options.boxSize;
   const w = (d: Regiment) => (d.n ? size * 4 : size * 6);
   const h = size * 2;
   const x = (d: Regiment) => rn(d.x - w(d) / 2, 2);
@@ -62,18 +64,18 @@ const drawRegimentsRenderer = (regiments: Regiment[], s: number): void => {
     .attr("text-rendering", "optimizeSpeed")
     .attr("x", d => x(d) - size)
     .attr("y", d => d.y)
-    .text(d => (d.icon!.startsWith("http") || d.icon!.startsWith("data:image") ? "" : d.icon!));
+    .text(d => (isImageIcon(d.icon!) ? "" : d.icon!));
   g.append("image")
     .attr("class", "regimentImage")
     .attr("x", d => x(d) - h)
     .attr("y", d => y(d))
     .attr("height", h)
     .attr("width", h)
-    .attr("href", d => (d.icon!.startsWith("http") || d.icon!.startsWith("data:image") ? d.icon! : ""));
+    .attr("href", d => (isImageIcon(d.icon!) ? d.icon! : ""));
 };
 
 export const drawRegiment = (reg: Regiment, stateId: number): void => {
-  const size = +select<SVGGElement, unknown>("#armies").attr("box-size");
+  const size = styles.military.options.boxSize;
   const w = reg.n ? size * 4 : size * 6;
   const h = size * 2;
   const x1 = rn(reg.x - w / 2, 2);
@@ -116,14 +118,14 @@ export const drawRegiment = (reg: Regiment, stateId: number): void => {
     .attr("text-rendering", "optimizeSpeed")
     .attr("x", x1 - size)
     .attr("y", reg.y)
-    .text(reg.icon!.startsWith("http") || reg.icon!.startsWith("data:image") ? "" : reg.icon!);
+    .text(isImageIcon(reg.icon!) ? "" : reg.icon!);
   g.append("image")
     .attr("class", "regimentImage")
     .attr("x", x1 - h)
     .attr("y", y1)
     .attr("height", h)
     .attr("width", h)
-    .attr("href", reg.icon!.startsWith("http") || reg.icon!.startsWith("data:image") ? reg.icon! : "");
+    .attr("href", isImageIcon(reg.icon!) ? reg.icon! : "");
 };
 
 // move one regiment to another
@@ -136,7 +138,7 @@ export const moveRegiment = (reg: Regiment, x: number, y: number): void => {
   const duration = Math.hypot(reg.x - x, reg.y - y) * 8;
   reg.x = x;
   reg.y = y;
-  const size = +select<SVGGElement, unknown>("#armies").attr("box-size");
+  const size = styles.military.options.boxSize;
   const w = reg.n ? size * 4 : size * 6;
   const h = size * 2;
   const x1 = (x: number) => rn(x - w / 2, 2);

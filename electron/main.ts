@@ -85,16 +85,13 @@ protocol.registerSchemesAsPrivileged([
 
 /**
  * A .map file is shared like a document, and the app builds markup out of what is inside it, so the one
- * directive that matters is `script-src`: no origin but the build itself may supply code, save for the
- * Assistant widget the user opts into. The rest stays permissive, because maps embed data/blob images and
- * fonts and the AI providers are fetched over https. `unsafe-eval` is required by the goods distribution
- * formulas, which compile to `new Function`
+ * directive that matters is `script-src`: no external origin may supply code. The rest stays permissive,
+ * because maps embed data/blob images and fonts and the AI providers are fetched over https. `unsafe-eval`
+ * is required by the goods distribution formulas, which compile to `new Function`
  */
-const ASSISTANT_ORIGINS = "https://*.openwidget.com";
-
 const CSP = [
   "default-src 'self' data: blob:",
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${ASSISTANT_ORIGINS}`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval'`,
   "style-src 'self' 'unsafe-inline' https:",
   "font-src 'self' data: https:",
   "img-src 'self' data: blob: https:",
@@ -181,7 +178,11 @@ function buildMenu(): void {
   const isMac = process.platform === "darwin";
 
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? ([{ role: "appMenu" }] satisfies MenuItemConstructorOptions[]) : []),
+    ...(isMac
+      ? ([{ role: "appMenu" }] satisfies MenuItemConstructorOptions[])
+      : // the app menu carries Quit on macOS; elsewhere there is otherwise no way to leave the app
+        // from the UI at all, which a window manager that draws no titlebar leaves with none
+        ([{ label: "File", submenu: [{ role: "quit" }] }] satisfies MenuItemConstructorOptions[])),
     { role: "editMenu" },
     {
       label: "View",
@@ -225,10 +226,16 @@ function allowClose(): void {
  * silently instead of prompting, which would make the window unclosable. Ask natively instead
  */
 function confirmOnClose(window: BrowserWindow): void {
+  let confirming = false;
+
   window.on("close", event => {
     saveState(window);
     if (skipConfirmation) return;
     event.preventDefault();
+    // Cmd+Q reaches the window through before-quit as well as the close itself, and a window
+    // manager binding can deliver it more than once; without this the dialog stacks on itself
+    if (confirming) return;
+    confirming = true;
 
     dialog
       .showMessageBox(window, {
@@ -241,6 +248,7 @@ function confirmOnClose(window: BrowserWindow): void {
         detail: "The map is autosaved to the app storage, but save it to a file to be safe"
       })
       .then(({ response }) => {
+        confirming = false;
         if (response !== 0) {
           quitting = false;
           return;

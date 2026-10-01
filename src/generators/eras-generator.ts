@@ -148,13 +148,13 @@ class ErasModule {
       populationCeilingByBurg.set(burg.i, (burg.population ?? 0) * CARRYING_CAPACITY_MULTIPLIER);
     }
 
-    const eras: Era[] = [this.snapshot(options.year, [])];
+    const eras: Era[] = [this.snapshot(options.map.lore.calendar.year, [])];
 
     for (let n = 1; n < eraCount; n++) {
-      options.year += yearsPerEra;
+      options.map.lore.calendar.year += yearsPerEra;
       // applySuccession() mutates pack.states/pack.burgs in place (locks, name drift, small-burg
       // removal) before States.regenerate() is even called - saved here so that if regenerate()
-      // then aborts (see below) those mutations can be undone along with options.year, leaving no
+      // then aborts (see below) those mutations can be undone along with options.map.lore.calendar.year, leaving no
       // trace of an era that never actually happened
       const statesBeforeSuccession = structuredClone(pack.states);
       const burgsBeforeSuccession = structuredClone(pack.burgs);
@@ -168,7 +168,7 @@ class ErasModule {
       // Wars/Rebellions/Characters against territory that was never regenerated for this year.
       const { error } = window.States.regenerate() ?? {};
       if (error) {
-        options.year -= yearsPerEra;
+        options.map.lore.calendar.year -= yearsPerEra;
         pack.states = statesBeforeSuccession;
         pack.burgs = burgsBeforeSuccession;
         break;
@@ -183,7 +183,7 @@ class ErasModule {
       this.updateTreasuries();
       const previousEra = eras[eras.length - 1];
       evolveRoutes(new Set(previousEra.states.filter(s => s.i && !s.removed).map(s => s.capital)));
-      eras.push(this.snapshot(options.year, epidemicEvents));
+      eras.push(this.snapshot(options.map.lore.calendar.year, epidemicEvents));
     }
 
     pack.eras = eras;
@@ -287,7 +287,7 @@ class ErasModule {
       const seatBurg = pack.burgs[province.burg];
       if (!seatBurg?.i || seatBurg.removed || seatBurg.culture === state.culture) continue;
 
-      const yearsUnderForeignRule = options.year - province.annexedYear;
+      const yearsUnderForeignRule = options.map.lore.calendar.year - province.annexedYear;
       if (yearsUnderForeignRule < ASSIMILATION_MIN_YEARS) continue;
 
       const centuriesPastMinimum = (yearsUnderForeignRule - ASSIMILATION_MIN_YEARS) / 100;
@@ -331,7 +331,9 @@ class ErasModule {
     }
 
     const devastatedProvinceIds = new Set(
-      (pack.provinces ?? []).filter(p => p.i && !p.removed && p.annexedYear === options.year).map(p => p.i)
+      (pack.provinces ?? [])
+        .filter(p => p.i && !p.removed && p.annexedYear === options.map.lore.calendar.year)
+        .map(p => p.i)
     );
     // one shared roll per devastated province, not per cell/burg - the whole province suffers the
     // same war, not an independently unlucky dice roll on every cell within it

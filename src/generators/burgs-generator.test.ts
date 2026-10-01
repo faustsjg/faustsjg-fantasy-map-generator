@@ -155,11 +155,11 @@ describe("BurgsModule.assignPorts — open-lake port promotion", () => {
   });
 
   // -------------------------------------------------------------------------
-  it.each(["dry", "frozen", "lava"])("does not make ports on a %s lake (cannot be sailed)", group => {
+  it.each(["dry", "frozen", "lava"])("does not make ports on a %s lake (cannot be sailed)", subtype => {
     globalThis.pack = {
       burgs: makeBurgs(),
       cells: { ...BASE_CELLS },
-      features: [null, { i: 1, type: "lake", cells: 3, group }, { i: 2, type: "ocean" }],
+      features: [null, { i: 1, type: "lake", cells: 3, subtype }, { i: 2, type: "ocean" }],
       vertices: BASE_VERTICES,
       rivers: []
     } as any;
@@ -452,5 +452,62 @@ describe("BurgsModule.assignPorts — river-bank shift", () => {
     const burg = globalThis.pack.burgs[1];
     // Still shifted (axis-aligned fallback), just not crashing on the missing course.
     expect(burg.x === 5 && burg.y === 5).toBe(false);
+  });
+});
+
+describe("ensureBurgGroupStyles", () => {
+  it("seeds icon and anchor styles for custom groups from the fallback group, keeping existing entries", async () => {
+    globalThis.window = globalThis.window || ({} as any);
+    await import("./burgs-generator");
+    const Burgs = (globalThis as any).Burgs;
+
+    options.map.burgs.groups = [{ name: "town" }, { name: "fortresses" }] as never;
+    const town = { attrs: { fill: "#aaa" }, options: { size: 1, icon: "#icon-burg" } };
+    const townAnchor = { attrs: { fill: "#bbb" }, options: { size: 2 } };
+    (globalThis as any).styles = {
+      burgIcons: {
+        burgIcons: { groups: { town: structuredClone(town) } },
+        anchors: { groups: { town: structuredClone(townAnchor) } }
+      }
+    };
+
+    Burgs.ensureBurgGroupStyles();
+
+    const { burgIcons, anchors } = (globalThis as any).styles.burgIcons;
+    expect(burgIcons.groups.town).toEqual(town);
+    expect(burgIcons.groups.fortresses).toEqual(town);
+    expect(burgIcons.groups.fortresses).not.toBe(burgIcons.groups.town);
+    expect(anchors.groups.fortresses).toEqual(townAnchor);
+  });
+});
+
+describe("BurgsModule.parseStoredGroups", () => {
+  let Burgs: any;
+
+  beforeEach(async () => {
+    globalThis.TIME = false;
+    globalThis.window = globalThis.window || ({} as any);
+    await import("./burgs-generator");
+    Burgs = (globalThis as any).Burgs;
+  });
+
+  it("falls back to the defaults when the stored value holds no usable group", () => {
+    const defaults = Burgs.getDefaultGroups();
+    expect(Burgs.parseStoredGroups(null)).toEqual(defaults);
+    expect(Burgs.parseStoredGroups("[]")).toEqual(defaults);
+    expect(Burgs.parseStoredGroups("not json")).toEqual(defaults);
+    expect(Burgs.parseStoredGroups(JSON.stringify([{ order: 1 }]))).toEqual(defaults);
+  });
+
+  it("keeps usable stored groups and drops the rest", () => {
+    const usable = { name: "outpost", order: 3 };
+    const stored = JSON.stringify([usable, { order: 4 }, { name: "noOrder" }]);
+    const groups = Burgs.parseStoredGroups(stored);
+    expect(groups.map((group: any) => group.name)).toEqual(["outpost"]);
+  });
+
+  it("always leaves a default group for burg assignment to fall back on", () => {
+    const groups = Burgs.parseStoredGroups(JSON.stringify([{ name: "outpost", order: 3 }]));
+    expect(groups.filter((group: any) => group.isDefault).length).toBe(1);
   });
 });

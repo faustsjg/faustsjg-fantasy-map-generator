@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Point } from "@/types/global";
 import type { PaintEditorOptions } from "./paint-editor";
 import { PaintEditor } from "./paint-editor";
 import "@/generators/pack-generator"; // registers the Pack global the editor finds cells with
@@ -25,7 +26,12 @@ const getOptions = (overrides: Partial<PaintEditorOptions> = {}): PaintEditorOpt
   ...overrides
 });
 
-async function dragBrush(): Promise<void> {
+async function dragBrush(
+  points: Point[] = [
+    [1, 1],
+    [2, 2]
+  ]
+): Promise<void> {
   const viewbox = document.getElementById("viewbox")!;
   const eventView = document.defaultView!;
   const MouseEvent = eventView.MouseEvent;
@@ -34,9 +40,13 @@ async function dragBrush(): Promise<void> {
     Object.defineProperty(event, "view", { value: eventView });
     return event;
   };
-  viewbox.dispatchEvent(mouseEvent("mousedown", { bubbles: true, button: 0, clientX: 1, clientY: 1 }));
-  eventView.dispatchEvent(mouseEvent("mousemove", { bubbles: true, buttons: 1, clientX: 2, clientY: 2 }));
-  eventView.dispatchEvent(mouseEvent("mouseup", { bubbles: true, button: 0, clientX: 2, clientY: 2 }));
+  const [startX, startY] = points[0];
+  viewbox.dispatchEvent(mouseEvent("mousedown", { bubbles: true, button: 0, clientX: startX, clientY: startY }));
+  for (const [clientX, clientY] of points.slice(1)) {
+    eventView.dispatchEvent(mouseEvent("mousemove", { bubbles: true, buttons: 1, clientX, clientY }));
+  }
+  const [clientX, clientY] = points.at(-1)!;
+  eventView.dispatchEvent(mouseEvent("mouseup", { bubbles: true, button: 0, clientX, clientY }));
   await new Promise(resolve => setTimeout(resolve, 0));
 }
 
@@ -84,6 +94,10 @@ beforeEach(() => {
   }) as unknown as typeof window.$;
   const parentDialog = document.getElementById("parentDialog")!;
   $(parentDialog).dialog({ close: () => parentDialog.remove() });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("PaintEditor", () => {
@@ -142,11 +156,12 @@ describe("PaintEditor", () => {
     expect(options.map(option => option.textContent)).toEqual(["Neutral", "North", "South"]);
   });
 
-  it("shows the hovered item from the value getter", () => {
+  it("shows the hovered item from the value getter", async () => {
     PaintEditor.open(getOptions({ getValue: () => 2 }));
     document
       .getElementById("viewbox")
       ?.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: 2, clientY: 2 }));
+    await new Promise(requestAnimationFrame); // the brush answers pointer moves once per frame
 
     expect(document.getElementById("tooltip")?.textContent).toBe("South");
   });
@@ -166,6 +181,91 @@ describe("PaintEditor", () => {
     expect([...changes]).toEqual([[3, 1]]);
     expect(calls).toEqual(["apply", "close"]);
     expect(globalThis.customization).toBe(0);
+  });
+
+  it("paints the whole path of a fast swipe, not only where the pointer events landed", async () => {
+    vi.spyOn(Pack, "findAll").mockImplementation(x => [Math.floor(x / 10)]); // one cell per 10px column
+    pack.cells.h = new Uint8Array(7).fill(30);
+    pack.cells.v = Array.from({ length: 7 }, () => [0, 1, 2]);
+    pack.cells.p = Array.from({ length: 7 }, () => [2, 2]);
+    const onApply = vi.fn();
+    PaintEditor.open(getOptions({ onApply })); // default radius 12: stamps every 6px
+
+    await dragBrush([
+      [1, 1],
+      [61, 1]
+    ]);
+    document.getElementById("paintEditorApply")?.click();
+
+    const changes = onApply.mock.calls[0][0] as ReadonlyMap<number, number>;
+    expect([...changes.keys()].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  });
+
+  it.each([6, 20])("paints cells reached by a short movement with brush size %i", async radius => {
+    pack.cells.p = [
+      [0, 0],
+      [radius + 0.5, 0],
+      [radius + 1.5, 0],
+      [0, radius + 0.5]
+    ];
+    pack.cells.v = Array.from({ length: 4 }, () => [0, 1, 2]);
+    const onApply = vi.fn();
+    PaintEditor.open(getOptions({ onApply }));
+    const size = document.getElementById("paintEditorBrush") as HTMLInputElement;
+    size.value = String(radius);
+    size.dispatchEvent(new Event("input"));
+
+    await dragBrush([
+      [0, 0],
+      [1, 0]
+    ]);
+
+    expect(
+      [...document.querySelectorAll<SVGPolygonElement>("#paintEditorOverlay polygon")].map(p => +p.dataset.cell!)
+    ).toEqual(expect.arrayContaining([0, 1]));
+    document.getElementById("paintEditorApply")?.click();
+    expect([...(onApply.mock.calls[0][0] as ReadonlyMap<number, number>).keys()].sort()).toEqual([0, 1]);
+  });
+
+  it("follows short turns and keeps the entire drag in one undo entry", async () => {
+    pack.cells.p = [
+      [0, 0],
+      [20.5, 0],
+      [0, 20.5],
+      [22, 0]
+    ];
+    pack.cells.v = Array.from({ length: 4 }, () => [0, 1, 2]);
+    const onApply = vi.fn();
+    PaintEditor.open(getOptions({ onApply }));
+    const size = document.getElementById("paintEditorBrush") as HTMLInputElement;
+    size.value = "20";
+    size.dispatchEvent(new Event("input"));
+
+    await dragBrush([
+      [0, 0],
+      [1, 0],
+      [0, 1]
+    ]);
+
+    const painted = [...document.querySelectorAll<SVGPolygonElement>("#paintEditorOverlay polygon")];
+    expect(painted.map(p => +p.dataset.cell!).sort()).toEqual([0, 1, 2]);
+    document.getElementById("paintEditorUndo")?.click();
+    expect(document.querySelectorAll("#paintEditorOverlay polygon")).toHaveLength(0);
+    expect((document.getElementById("paintEditorUndo") as HTMLButtonElement).disabled).toBe(true);
+    document.getElementById("paintEditorApply")?.click();
+    expect([...(onApply.mock.calls[0][0] as ReadonlyMap<number, number>)]).toEqual([]);
+  });
+
+  it("selects on a plain click without painting", async () => {
+    const onApply = vi.fn();
+    PaintEditor.open(getOptions({ getValue: () => 2, onApply }));
+    await dragBrush([[1, 1]]);
+    document
+      .getElementById("viewbox")
+      ?.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 1, clientY: 1 }));
+    expect((document.getElementById("paintEditorSelect") as HTMLSelectElement).value).toBe("2");
+    document.getElementById("paintEditorApply")?.click();
+    expect([...(onApply.mock.calls[0][0] as ReadonlyMap<number, number>)]).toEqual([]);
   });
 
   it("owns stroke history", async () => {

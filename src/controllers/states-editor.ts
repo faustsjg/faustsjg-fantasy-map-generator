@@ -1,4 +1,5 @@
-import { interpolateString, max, pack as packLayout, select, stratify } from "d3";
+import { max, pack as packLayout, select, stratify } from "d3";
+import { createAnnexMode } from "@/components/annex-mode";
 import { closeDialogs, confirmationDialog, destroyDialog, updateDialog } from "@/components/dialog/dialog-helpers";
 import { applyLineHighlighting } from "@/components/dialog/highlighting";
 import { bindColumnSorting, sortDataByColumns } from "@/components/dialog/sorting";
@@ -10,8 +11,9 @@ import {
   renderEditorPagination,
   type TableView
 } from "@/components/dialog/table";
-import type { FillBoxElement } from "@/components/fill-box";
 import { Layers } from "@/components/layers";
+import { Notes } from "@/components/notes";
+import type { FillBoxElement } from "@/components/shared/fill-box";
 import { clearMainTip, tip } from "@/components/tooltips";
 import { applyDefaultViewboxEvents } from "@/components/viewbox-events";
 import { Controllers } from "@/controllers";
@@ -19,10 +21,10 @@ import { Emblems } from "@/generators/emblems-generator";
 import type { Province } from "@/generators/provinces-generator";
 import type { State } from "@/generators/states-generator";
 import { redrawEmblem, redrawEmblems, removeEmblem } from "@/renderers/draw-emblems";
-import { clearLegend, drawLegend } from "@/renderers/draw-legend";
+import { clearLegend, drawLegend, hasLegend } from "@/renderers/draw-legend";
 import { EmblemRenderer } from "@/renderers/emblems/renderer";
 import { fog, unfog } from "@/renderers/overlays/fogging";
-import { highlightElement } from "@/renderers/overlays/highlight";
+import { highlightElement, highlightOutline } from "@/renderers/overlays/highlight";
 import { applyOption, downloadFile, getArea, getAreaUnit, getFileName, speak } from "@/utils";
 import {
   ensureEl,
@@ -40,6 +42,7 @@ import {
 } from "../utils";
 
 const dialogId = "statesEditor" as const;
+const LEGEND_NAME = "States"; // the legend box this editor toggles
 const position = { my: "right top", at: "right-10 top+10", of: "svg", collision: "fit" };
 const columns: EditorColumn<State>[] = [
   { key: "color", width: "1.2em", permanent: true },
@@ -102,7 +105,11 @@ const columns: EditorColumn<State>[] = [
     key: "population",
     label: "Population",
     width: "6em",
-    sortBy: s => rn((s.rural || 0) * populationRate + (s.urban || 0) * populationRate * urbanization)
+    sortBy: s =>
+      rn(
+        (s.rural || 0) * options.map.units.population.scale +
+          (s.urban || 0) * options.map.units.population.scale * options.map.units.population.urbanization.rate
+      )
   },
   {
     key: "treasury",
@@ -127,7 +134,12 @@ const columns: EditorColumn<State>[] = [
     hidden: true,
     sortBy: s => (s.i ? s.expansionism || 0 : 0)
   },
-  { key: "actions", width: "5.2em", permanent: true, align: "right" }
+  { key: "note", width: "1.1em" },
+  { key: "locate", width: "1.1em" },
+  { key: "focus", width: "1.1em" },
+  { key: "dynasty", width: "1.1em" },
+  { key: "lock", width: "1.1em" },
+  { key: "remove", width: "1.4em", permanent: true }
 ];
 
 const statesTable = initEditorTable<State>({
@@ -154,7 +166,6 @@ function open(): void {
   $(`#${dialogId}`).dialog({
     title: "States Editor",
     resizable: false,
-    width: "fit-content",
     position,
     close: closeStatesEditor
   });
@@ -185,9 +196,6 @@ function renderDialog(): void {
       <div id="statesRegenerateButtons" style="display: none">
         <button id="statesRegenerateBack" data-tip="Hide the regeneration menu" class="icon-cog-alt"></button>
         <button id="statesRandomize" data-tip="Randomize states Expansion value and re-calculate states and provinces" class="icon-shuffle"></button>
-        <div data-tip="Additional growth rate. Defines how many land cells remain neutral" style="display: inline-block">
-          <slider-input id="statesGrowthRate" min=".1" max="3" step=".05" value="1">Growth rate:</slider-input>
-        </div>
         <button id="statesRecalculate" data-tip="Recalculate states based on current values of growth-related attributes" class="icon-retweet"></button>
         <div data-tip="Allow states neutral distance, expansion and type changes to take an immediate effect" style="display: inline-block">
           <input id="statesAutoChange" class="checkbox" type="checkbox" />
@@ -203,6 +211,7 @@ function renderDialog(): void {
 
       <button id="statesAdd" data-tip="Add a new state. Hold Shift to add multiple" class="icon-plus"></button>
       <button id="statesMerge" data-tip="Merge several states into one" class="icon-layer-group"></button>
+      <button id="statesAnnex" data-tip="Annex states: click the annexing state, then the states it absorbs. Hold Shift to keep annexing" class="icon-crown"></button>
       <button id="statesExport" data-tip="Save state-related data as a text file (.csv)" class="icon-download"></button>
     </div>
   </div>`;
@@ -225,10 +234,10 @@ function renderDialog(): void {
   ensureEl("statesRegenerateBack").addEventListener("click", exitRegenerationMenu);
   ensureEl("statesRecalculate").addEventListener("click", () => recalculateStates(true));
   ensureEl("statesRandomize").addEventListener("click", randomizeStatesExpansion);
-  ensureEl("statesGrowthRate").addEventListener("input", () => recalculateStates(false));
   ensureEl("statesManually").addEventListener("click", openPaintEditor);
   ensureEl("statesAdd").addEventListener("click", enterAddStateMode);
   ensureEl("statesMerge").addEventListener("click", openStateMergeDialog);
+  ensureEl("statesAnnex").addEventListener("click", statesAnnex.toggle);
   ensureEl("statesExport").addEventListener("click", downloadStatesCsv);
 
   ensureEl("statesBodySection").addEventListener("click", event => {
@@ -245,6 +254,7 @@ function renderDialog(): void {
     else if (classList.contains("icon-dot-circled")) Controllers.BurgsOverview.open({ stateId });
     else if (classList.contains("statePopulation")) changePopulation(stateId);
     else if (classList.contains("stateTreasury")) openTreasuryDialog(stateId);
+    else if (classList.contains("icon-book")) void Controllers.NotesEditor.open({ type: "state", id: stateId });
     else if (classList.contains("icon-pin")) toggleFog(stateId, classList);
     else if (classList.contains("icon-target"))
       highlightElement(select("#regions").select(`#state${stateId}`).node() as Element, 4);
@@ -268,7 +278,12 @@ function renderDialog(): void {
 
 function closeStatesEditor(): void {
   if (customization === 3) exitAddStateMode();
+  statesAnnex.exit();
+  Controllers.ColorPicker.close();
   select("#debug").selectAll(".highlight").remove();
+  const view = statesTable.view();
+  view.rows = [];
+  view.all = [];
   destroyDialog(dialogId);
 }
 
@@ -285,8 +300,8 @@ function renderStatesPage(view: TableView<State>): void {
   let totalBurgs = 0;
   for (const s of view.all) {
     totalArea += getArea(s.area || 0);
-    const rural = (s.rural || 0) * populationRate;
-    const urban = (s.urban || 0) * populationRate * urbanization;
+    const rural = (s.rural || 0) * options.map.units.population.scale;
+    const urban = (s.urban || 0) * options.map.units.population.scale * options.map.units.population.urbanization.rate;
     totalPopulation += rn(rural + urban);
     totalBurgs += s.burgs || 0;
   }
@@ -294,8 +309,8 @@ function renderStatesPage(view: TableView<State>): void {
   let lines = "";
   for (const s of view.rows) {
     const area = getArea(s.area || 0);
-    const rural = (s.rural || 0) * populationRate;
-    const urban = (s.urban || 0) * populationRate * urbanization;
+    const rural = (s.rural || 0) * options.map.units.population.scale;
+    const urban = (s.urban || 0) * options.map.units.population.scale * options.map.units.population.urbanization.rate;
     const population = rn(rural + urban);
     const populationTip = `Total population: ${si(population)}; Rural population: ${si(rural)}; Urban population: ${si(
       urban
@@ -354,7 +369,12 @@ function renderStatesPage(view: TableView<State>): void {
           <span class="icon-resize-full placeholder"></span>
           <input class="statePower placeholder" type="number" value="0" />
         </div>
-        <div data-col="actions"></div>
+        <div data-col="note"></div>
+        <div data-col="locate"></div>
+        <div data-col="focus"></div>
+        <div data-col="dynasty"></div>
+        <div data-col="lock"></div>
+        <div data-col="remove"></div>
       </div>`;
       continue;
     }
@@ -415,13 +435,12 @@ function renderStatesPage(view: TableView<State>): void {
         <input data-tip="Expansionism (defines competitive size). Change to re-calculate states based on new value"
           class="statePower" type="number" min="0" max="99" step=".1" value=${s.expansionism} />
       </div>
-      <div data-col="actions">
-        <span data-tip="Locate the state" class="icon-target"></span>
-        <span data-tip="Toggle state focus" class="icon-pin ${focused ? "" : " inactive"}"></span>
-        <span data-tip="View the ruling dynasty and line of succession" class="icon-users"></span>
-        <span data-tip="Lock the state" class="icon-lock${s.lock ? "" : "-open"}"></span>
-        <span data-tip="Remove the state" class="icon-trash-empty"></span>
-      </div>
+      ${Notes.getIcon("this state")}
+      <span data-col="locate" data-tip="Locate the state" class="icon-target"></span>
+      <span data-col="focus" data-tip="Toggle state focus" class="icon-pin ${focused ? "" : " inactive"}"></span>
+      <span data-col="dynasty" data-tip="View the ruling dynasty and line of succession" class="icon-users"></span>
+      <span data-col="lock" data-tip="Lock the state" class="icon-lock${s.lock ? "" : "-open"}"></span>
+      <span data-col="remove" data-tip="Remove the state" class="icon-trash-empty"></span>
     </div>`;
   }
   const body = ensureEl("statesBodySection");
@@ -480,25 +499,7 @@ function stateHighlightOn(event: any): void {
 
   const state = +event.target.dataset.id;
   if (customization || !state) return;
-  const d = select("#regions").select(`#state${state}`).attr("d");
-
-  const path = select("#debug")
-    .append("path")
-    .attr("class", "highlight")
-    .attr("d", d)
-    .attr("fill", "none")
-    .attr("stroke", "red")
-    .attr("stroke-width", 1)
-    .attr("opacity", 1)
-    .attr("filter", "url(#blur1)");
-
-  const totalLength = (path.node() as SVGPathElement).getTotalLength();
-  const duration = (totalLength + 5000) / 2;
-  const interpolate = interpolateString(`0, ${totalLength}`, `${totalLength}, ${totalLength}`);
-  path
-    .transition()
-    .duration(duration)
-    .attrTween("stroke-dasharray", () => interpolate);
+  highlightOutline(select("#regions").select(`#state${state}`).attr("d"));
 }
 
 function stateHighlightOff(): void {
@@ -784,8 +785,10 @@ function changePopulation(stateId: number): void {
     return;
   }
 
-  const rural = rn((state.rural || 0) * populationRate);
-  const urban = rn((state.urban || 0) * populationRate * urbanization);
+  const rural = rn((state.rural || 0) * options.map.units.population.scale);
+  const urban = rn(
+    (state.urban || 0) * options.map.units.population.scale * options.map.units.population.urbanization.rate
+  );
   const total = rural + urban;
   const format = (n: number) => Number(n).toLocaleString();
 
@@ -840,7 +843,7 @@ function changePopulation(stateId: number): void {
       });
     }
     if (!Number.isFinite(ruralChange) && +ruralPop.value > 0) {
-      const points = +ruralPop.value / populationRate;
+      const points = +ruralPop.value / options.map.units.population.scale;
       const cells = (pack.cells.i as unknown as number[]).filter(i => pack.cells.state[i] === stateId);
       const pop = points / cells.length;
       cells.forEach(i => {
@@ -856,7 +859,8 @@ function changePopulation(stateId: number): void {
       });
     }
     if (!Number.isFinite(urbanChange) && +urbanPop.value > 0) {
-      const points = +urbanPop.value / populationRate / urbanization;
+      const points =
+        +urbanPop.value / options.map.units.population.scale / options.map.units.population.urbanization.rate;
       const burgs = pack.burgs.filter(b => !b.removed && b.state === stateId);
       const population = rn(points / burgs.length, 4);
       burgs.forEach(b => {
@@ -988,11 +992,6 @@ async function stateRemovePrompt(state: number): Promise<void> {
 }
 
 function stateRemove(stateId: number): void {
-  select("#statesBody").select(`#state${stateId}`).remove();
-  select("#statesBody").select(`#state-gap${stateId}`).remove();
-  select("#statesHalo").select(`#state-border${stateId}`).remove();
-  delete pack.states[stateId].label;
-
   unfog(`focusState${stateId}`);
 
   pack.burgs.forEach(burg => {
@@ -1004,35 +1003,22 @@ function stateRemove(stateId: number): void {
       }
     }
   });
-  Layers.draw("burgIcons", "labels");
 
-  pack.cells.state.forEach((s: number, i: number) => {
+  pack.cells.state.forEach((s, i) => {
     if (s === stateId) pack.cells.state[i] = 0;
   });
 
-  // remove emblem
   removeEmblem("state", stateId);
 
   // remove provinces
-  (pack.states[stateId].provinces || []).forEach((p: number) => {
+  (pack.states[stateId].provinces || []).forEach(p => {
     pack.provinces[p] = { i: p, removed: true } as Province;
-    pack.cells.province.forEach((pr: number, i: number) => {
+    pack.cells.province.forEach((pr, i) => {
       if (pr === p) pack.cells.province[i] = 0;
     });
 
     removeEmblem("province", p);
-    const g = select("#provs").select("#provincesBody");
-    g.select(`#province${p}`).remove();
-    g.select(`#province-gap${p}`).remove();
   });
-
-  // remove military
-  (pack.states[stateId].military || []).forEach((m: any) => {
-    const id = `regiment${stateId}-${m.i}`;
-    const index = notes.findIndex(n => n.id === id);
-    if (index !== -1) notes.splice(index, 1);
-  });
-  select(`#armies g#army${stateId}`).remove();
 
   // clean up neighbors references from other states
   pack.states.forEach(state => {
@@ -1040,18 +1026,18 @@ function stateRemove(stateId: number): void {
     state.neighbors = state.neighbors.filter((n: number) => n !== stateId);
   });
 
+  delete pack.states[stateId].label;
   pack.states[stateId] = { i: stateId, removed: true } as State;
 
   select("#debug").selectAll(".highlight").remove();
 
-  Layers.draw("states", "borders", "provinces");
-
+  Layers.draw("burgIcons", "labels", "military", "borders", "provinces", "states");
   refreshStatesEditor();
 }
 
 function toggleLegend(): void {
-  if (select("#legend").selectAll("*").size()) {
-    clearLegend(); // hide legend
+  if (hasLegend(LEGEND_NAME)) {
+    clearLegend(LEGEND_NAME); // hide the states legend, keeping the other boxes
     return;
   }
 
@@ -1059,7 +1045,8 @@ function toggleLegend(): void {
     .filter(s => s.i && !s.removed && s.cells)
     .sort((a, b) => (b.area ?? 0) - (a.area ?? 0))
     .map(s => [s.i, s.color, s.name]);
-  drawLegend("States", data);
+  if (!data.length) return void tip("No states to show", false, "error");
+  drawLegend(LEGEND_NAME, data);
 }
 
 function togglePercentageMode(): void {
@@ -1163,8 +1150,10 @@ function showStatesChart(): void {
     const state = d.data.fullName;
 
     const area = `${getArea(d.data.area)} ${getAreaUnit()}`;
-    const rural = rn(d.data.rural * populationRate);
-    const urban = rn(d.data.urban * populationRate * urbanization);
+    const rural = rn(d.data.rural * options.map.units.population.scale);
+    const urban = rn(
+      d.data.urban * options.map.units.population.scale * options.map.units.population.urbanization.rate
+    );
 
     const option = ensureEl<HTMLSelectElement>("statesTreeType").value;
     const value =
@@ -1238,13 +1227,14 @@ function openRegenerationMenu(): void {
       el.style.display = "none";
     });
   ensureEl("statesRegenerateButtons").style.display = "block";
-  $("#statesEditor").dialog({ position: { my: "right top", at: "right-10 top+10", of: "svg", collision: "fit" } });
 }
 
 function recalculateStates(must?: boolean): void {
   if (!must && !ensureEl<HTMLInputElement>("statesAutoChange").checked) return;
 
   States.expandStates();
+  // opt-in regeneration ("auto-apply changes"), so it takes the current request for the province
+  // ratio rather than a fact of the map. See docs/architecture/configuration.md#the-test
   Provinces.generate();
   Provinces.getPoles();
   States.getPoles();
@@ -1277,7 +1267,6 @@ function exitRegenerationMenu(): void {
       el.style.display = "inline-block";
     });
   ensureEl("statesRegenerateButtons").style.display = "none";
-  $("#statesEditor").dialog({ position: { my: "right top", at: "right-10 top+10", of: "svg", collision: "fit" } });
 }
 
 function openPaintEditor(): void {
@@ -1595,7 +1584,7 @@ function addState(this: SVGElement, event: MouseEvent): void {
   redrawEmblem("state", newState);
 
   Layers.hide("provinces");
-  Layers.show("states", "borders");
+  Layers.draw("states", "borders");
 
   statesTable.refresh();
 }
@@ -1613,9 +1602,10 @@ function exitAddStateMode(): void {
   if (statesAdd.classList.contains("pressed")) statesAdd.classList.remove("pressed");
 }
 
+const stateEmblem = (i: number) =>
+  /* html */ `<svg class="coaIcon" viewBox="0 0 200 200"><use href="#stateCOA${i}"></use></svg>`;
+
 function openStateMergeDialog(): void {
-  const emblem = (i: number) =>
-    /* html */ `<svg class="coaIcon" viewBox="0 0 200 200"><use href="#stateCOA${i}"></use></svg>`;
   const validStates = pack.states.filter(s => s.i && !s.removed);
 
   const statesSelector = validStates
@@ -1624,7 +1614,7 @@ function openStateMergeDialog(): void {
       <div data-id="${s.i}" data-tip="${s.fullName}" style="cursor:default">
         <input type="radio" name="rulingState" value="${s.i}" />
         <input id="selectState${s.i}" class="checkbox" type="checkbox" name="statesToMerge" value="${s.i}" />
-        <label for="selectState${s.i}" class="checkbox-label"><fill-box fill="${s.color}" disabled></fill-box>${emblem(s.i)}${s.fullName}</label>
+        <label for="selectState${s.i}" class="checkbox-label"><fill-box fill="${s.color}" disabled></fill-box>${stateEmblem(s.i)}${s.fullName}</label>
       </div>
     `
     )
@@ -1649,7 +1639,7 @@ function openStateMergeDialog(): void {
       el.addEventListener("mouseenter", highlightStateOnMergeHover);
       el.addEventListener("mouseleave", stateHighlightOff);
     });
-  applyLineHighlighting("mergeStatesForm", ({ cellId }) => pack.cells.state[cellId]);
+  applyLineHighlighting("alert", ({ cellId }) => pack.cells.state[cellId]);
 
   function highlightStateOnMergeHover(event: any) {
     if (!Layers.isOn("states")) return;
@@ -1659,24 +1649,7 @@ function openStateMergeDialog(): void {
     if (!d) return;
 
     stateHighlightOff();
-
-    const path = select("#debug")
-      .append("path")
-      .attr("class", "highlight")
-      .attr("d", d)
-      .attr("fill", "none")
-      .attr("stroke", "red")
-      .attr("stroke-width", 1)
-      .attr("opacity", 1)
-      .attr("filter", "url(#blur1)");
-
-    const totalLength = (path.node() as SVGPathElement).getTotalLength();
-    const duration = (totalLength + 5000) / 2;
-    const interpolate = interpolateString(`0, ${totalLength}`, `${totalLength}, ${totalLength}`);
-    path
-      .transition()
-      .duration(duration)
-      .attrTween("stroke-dasharray", () => interpolate);
+    highlightOutline(d);
   }
 
   $("#alert").dialog({
@@ -1692,7 +1665,6 @@ function openStateMergeDialog(): void {
           tip("Please select a state to merge into", false, "error");
           return;
         }
-        const rullingState = pack.states[rulingStateId];
 
         const statesToMerge = formData
           .getAll("statesToMerge")
@@ -1702,115 +1674,165 @@ function openStateMergeDialog(): void {
           tip("Please select several states to merge", false, "error");
           return;
         }
-        // a locked state being merged in (absorbed) is what needs protecting - being the ruling
-        // state that survives and absorbs the others is unaffected by its own lock, same asymmetry
-        // as wars-generator.ts's annex() only checking the defender's lock, not the attacker's
-        const lockedState = statesToMerge.map(id => pack.states[id]).find(s => s.userLocked);
-        if (lockedState) {
-          tip(`Cannot merge ${lockedState.name} - it's locked. Unlock it first`, false, "error");
-          return;
-        }
-        const lockedBurg = pack.burgs.find(
-          b => b.i && !b.removed && b.lock && statesToMerge.includes(pack.cells.state[b.cell])
-        );
-        if (lockedBurg) {
-          tip(`Cannot merge: burg ${lockedBurg.name} is locked. Unlock it first`, false, "error");
-          return;
-        }
 
-        void Controllers.ErasEditor.pastEraRegeneration().then(regeneration => {
-          confirmationDialog({
-            title: "Merge states",
-            // prettier-ignore
-            message: /* html */ `
-            <p>The following states will be <strong>removed</strong>: ${statesToMerge.map(stateId => `${emblem(stateId)}${(pack.states)[stateId].name}`).join(", ")}.</p>
-            <p>Removed states data (burgs, provinces, regiments) will be assigned to ${emblem(rullingState.i)}${rullingState.name}.</p>
-            <p>Are you sure you want to merge states? This action cannot be reverted.${regeneration ? ` ${regeneration.sentence}.` : ""}</p>`,
-            confirm: "Merge",
-            onConfirm: () => {
-              mergeStates(statesToMerge, rulingStateId);
-              regeneration?.apply();
-              $(this).dialog("close");
-            }
-          });
-        });
+        void confirmStatesMerge(statesToMerge, rulingStateId, () => $(this).dialog("close"));
       },
       Cancel: function (this: HTMLElement) {
         $(this).dialog("close");
       }
     }
   });
+}
 
-  function mergeStates(statesToMerge: number[], rulingStateId: number) {
-    const rulingState = pack.states[rulingStateId];
-    const rulingStateArmy = ensureEl(`army${rulingStateId}`);
+// Both ways of merging (the Merge dialog and annexing by clicking on the map) end here, so the lock
+// checks live here too
+async function confirmStatesMerge(
+  statesToMerge: number[],
+  rulingStateId: number,
+  onConfirm?: () => void
+): Promise<void> {
+  // a locked state being merged in (absorbed) is what needs protecting - being the ruling
+  // state that survives and absorbs the others is unaffected by its own lock, same asymmetry
+  // as wars-generator.ts's annex() only checking the defender's lock, not the attacker's
+  const lockedState = statesToMerge.map(id => pack.states[id]).find(s => s.userLocked);
+  if (lockedState) return void tip(`Cannot merge ${lockedState.name} - it's locked. Unlock it first`, false, "error");
+  const lockedBurg = pack.burgs.find(
+    b => b.i && !b.removed && b.lock && statesToMerge.includes(pack.cells.state[b.cell])
+  );
+  if (lockedBurg) return void tip(`Cannot merge: burg ${lockedBurg.name} is locked. Unlock it first`, false, "error");
+  // keeping the removed states as provinces replaces their own provinces
+  const lockedProvince = pack.provinces.find(p => p.i && !p.removed && p.lock && statesToMerge.includes(p.state));
 
-    // remove states to be merged
-    statesToMerge.forEach(stateId => {
-      const state = pack.states[stateId];
-      state.removed = true;
+  const regeneration = await Controllers.ErasEditor.pastEraRegeneration();
+  const rulingState = pack.states[rulingStateId];
+  const ruler = `${stateEmblem(rulingState.i)}${rulingState.name}`;
+  confirmationDialog({
+    title: "Merge states",
+    // prettier-ignore
+    message: /* html */ `
+      <p>The following states will be <strong>removed</strong>: ${statesToMerge.map(stateId => `${stateEmblem(stateId)}${(pack.states)[stateId].name}`).join(", ")}.</p>
+      <p>Removed states data (burgs, provinces, regiments) will be assigned to ${ruler}.</p>
+      <label style="display: flex; align-items: center"><input id="mergeStatesAsProvinces" class="checkbox native" type="checkbox"> Keep each removed state as a province of ${ruler}, replacing its own provinces</label>
+      <p>Are you sure you want to merge states? This action cannot be reverted.${regeneration ? ` ${regeneration.sentence}.` : ""}</p>`,
+    confirm: "Merge",
+    onConfirm: () => {
+      const asProvinces = ensureEl<HTMLInputElement>("mergeStatesAsProvinces").checked;
+      if (asProvinces && lockedProvince) {
+        tip(`Cannot replace province ${lockedProvince.name} - it's locked. Unlock it first`, false, "error");
+        return;
+      }
+      mergeStates(statesToMerge, rulingStateId, asProvinces);
+      regeneration?.apply();
+      onConfirm?.();
+    }
+  });
+}
 
-      select("#statesBody").select(`#state${stateId}`).remove();
-      select("#statesBody").select(`#state-gap${stateId}`).remove();
-      select("#statesHalo").select(`#state-border${stateId}`).remove();
-      delete pack.states[stateId].label;
+const statesAnnex = createAnnexMode({
+  buttonId: "statesAnnex",
+  bodySectionId: "statesBodySection",
+  noun: "state",
+  ownerOf: cellId => pack.cells.state[cellId],
+  colorOf: stateId => pack.states[stateId].color ?? "#999999",
+  nameOf: stateId => pack.states[stateId].name,
+  commit: (rulingStateId, statesToMerge) => void confirmStatesMerge(statesToMerge, rulingStateId)
+});
 
-      removeEmblem("state", stateId);
+function mergeStates(statesToMerge: number[], rulingStateId: number, asProvinces = false): void {
+  const rulingState = pack.states[rulingStateId];
+  const rulingStateArmy = ensureEl(`army${rulingStateId}`);
 
-      // add merged state regiments to the ruling state
-      (state.military || []).forEach((regiment: any) => {
-        const oldId = `regiment${stateId}-${regiment.i}`;
-        const newIndex = (rulingState.military || []).length;
-        (rulingState.military || []).push({ ...regiment, i: newIndex });
-        const newId = `regiment${rulingStateId}-${newIndex}`;
+  // remove states to be merged
+  statesToMerge.forEach(stateId => {
+    const state = pack.states[stateId];
+    state.removed = true;
+    delete pack.states[stateId].label;
 
-        const note = notes.find(n => n.id === oldId);
-        if (note) note.id = newId;
+    removeEmblem("state", stateId);
 
-        const element = document.getElementById(oldId);
-        if (element) {
-          element.id = newId;
-          element.dataset.state = String(rulingStateId);
-          element.dataset.id = String(newIndex);
-          rulingStateArmy.appendChild(element);
-        }
-      });
+    // add merged state regiments to the ruling state
+    (state.military || []).forEach((regiment: any) => {
+      const oldId = `regiment${stateId}-${regiment.i}`;
+      const newIndex = (rulingState.military || []).length;
+      (rulingState.military || []).push({ ...regiment, i: newIndex });
+      const newId = `regiment${rulingStateId}-${newIndex}`;
 
-      select(`#armies g#army${stateId}`).remove();
-    });
-
-    // reassing burgs
-    pack.burgs.forEach(burg => {
-      if (statesToMerge.includes(burg.state ?? 0)) {
-        if (burg.capital) {
-          burg.capital = 0;
-          Burgs.changeGroup(burg, null);
-        }
-        burg.state = rulingStateId;
+      const element = document.getElementById(oldId);
+      if (element) {
+        element.id = newId;
+        element.dataset.state = String(rulingStateId);
+        element.dataset.id = String(newIndex);
+        rulingStateArmy.appendChild(element);
       }
     });
 
-    // reassign provinces
-    pack.provinces.forEach(province => {
-      if (statesToMerge.includes(province.state)) province.state = rulingStateId;
-    });
+    select(`#armies g#army${stateId}`).remove();
 
-    // reassing cells
-    pack.cells.state.forEach((s: number, i: number) => {
-      if (statesToMerge.includes(s)) pack.cells.state[i] = rulingStateId;
-    });
+    if (asProvinces) demoteToProvince(state, rulingState);
+  });
 
-    unfog();
-    select("#debug").selectAll(".highlight").remove();
+  // reassing burgs
+  pack.burgs.forEach(burg => {
+    if (statesToMerge.includes(burg.state ?? 0)) {
+      if (burg.capital) {
+        burg.capital = 0;
+        Burgs.changeGroup(burg, null);
+      }
+      burg.state = rulingStateId;
+    }
+  });
 
-    States.getPoles();
+  // reassign provinces
+  pack.provinces.forEach(province => {
+    if (statesToMerge.includes(province.state)) province.state = rulingStateId;
+  });
 
-    if (!pack.states[rulingStateId].label) delete pack.states[rulingStateId].label;
+  // reassing cells
+  pack.cells.state.forEach((s: number, i: number) => {
+    if (statesToMerge.includes(s)) pack.cells.state[i] = rulingStateId;
+  });
 
-    Layers.show("states", "borders");
-    Layers.draw("burgIcons", "labels", "provinces");
-    refreshStatesEditor();
-  }
+  unfog();
+  select("#debug").selectAll(".highlight").remove();
+
+  States.getPoles();
+  if (asProvinces) Provinces.getPoles();
+
+  if (!pack.states[rulingStateId].label) delete pack.states[rulingStateId].label;
+
+  Layers.draw("states", "borders", "burgIcons", "labels", "provinces");
+  if (asProvinces) Layers.show("provinces");
+  refreshStatesEditor();
+}
+
+function demoteToProvince(state: State, rulingState: State): void {
+  const { cells, provinces, burgs } = pack;
+  const provinceId = provinces.length;
+
+  provinces.forEach(province => {
+    if (province.state !== state.i || province.removed) return;
+    removeEmblem("province", province.i);
+    provinces[province.i] = { i: province.i, removed: true } as Province;
+  });
+  cells.state.forEach((s: number, i: number) => {
+    if (s === state.i) cells.province[i] = provinceId;
+  });
+
+  const burg = state.capital;
+  const formName = state.formName || "Province";
+  provinces.push({
+    i: provinceId,
+    state: rulingState.i,
+    center: burg ? burgs[burg].cell : state.center,
+    burg,
+    name: state.name,
+    formName,
+    fullName: `${state.name} ${formName}`,
+    color: getMixedColor(state.color!),
+    coa: state.coa
+  } as Province);
+  rulingState.provinces!.push(provinceId);
+  redrawEmblem("province", provinceId);
 }
 
 function downloadStatesCsv(): void {
@@ -1819,7 +1841,10 @@ function downloadStatesCsv(): void {
   const data = statesTable.view().all.map(s => {
     const rural = s.rural || 0;
     const urban = s.urban || 0;
-    const population = rn(rural * populationRate + urban * populationRate * urbanization);
+    const population = rn(
+      rural * options.map.units.population.scale +
+        urban * options.map.units.population.scale * options.map.units.population.urbanization.rate
+    );
     return [
       s.i,
       s.name,
@@ -1834,8 +1859,8 @@ function downloadStatesCsv(): void {
       s.burgs,
       getArea(s.area || 0),
       population,
-      Math.round(rural * populationRate),
-      Math.round(urban * populationRate * urbanization)
+      Math.round(rural * options.map.units.population.scale),
+      Math.round(urban * options.map.units.population.scale * options.map.units.population.urbanization.rate)
     ].join(",");
   });
   const csvData = [headers].concat(data).join("\n");
@@ -1853,4 +1878,4 @@ function updateLockStatus(stateId: number, classList: DOMTokenList): void {
   classList.toggle("icon-lock");
 }
 
-export const StatesEditor = { open };
+export const StatesEditor = { open, showChart: showStatesChart };

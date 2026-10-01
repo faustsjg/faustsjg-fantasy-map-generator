@@ -510,7 +510,7 @@ class CharactersModule {
     for (const province of pack.provinces ?? []) {
       if (province.state === state.i) {
         province.state = survivor.i;
-        province.annexedYear = options.year; // newly under a foreign crown - a rebellion risk factor
+        province.annexedYear = options.map.lore.calendar.year; // newly under a foreign crown - a rebellion risk factor
       }
     }
 

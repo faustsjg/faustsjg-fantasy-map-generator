@@ -30,7 +30,7 @@ describe("evolveRoutes", () => {
       getNextId: vi.fn(() => Math.max(...pack.routes.map((r: any) => r.i)) + 1),
       generateName: vi.fn(() => "New Road")
     } as any;
-    globalThis.options = { year: 1000 } as any;
+    globalThis.options = { map: { lore: { calendar: { year: 1000 } } } } as any;
     globalThis.pack = {
       states: [{ i: 0 }],
       burgs: [{ i: 0 }],

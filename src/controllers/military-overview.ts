@@ -1,5 +1,5 @@
 import { interpolateString, select, sum } from "d3";
-import { closeDialogs, updateDialog } from "@/components/dialog/dialog-helpers";
+import { closeDialogs, destroyDialog, updateDialog } from "@/components/dialog/dialog-helpers";
 import { applyLineHighlighting } from "@/components/dialog/highlighting";
 import { bindColumnSorting, sortDataByColumns } from "@/components/dialog/sorting";
 import {
@@ -14,7 +14,8 @@ import { Layers } from "@/components/layers";
 import { tip } from "@/components/tooltips";
 import { Controllers } from "@/controllers";
 import type { State } from "@/generators/states-generator";
-import { downloadFile, getFileName } from "@/utils";
+import type { MilitaryUnit } from "@/types/Military";
+import { downloadFile, getFileName, isImageIcon } from "@/utils";
 import { capitalize, ensureEl, rn, sanitizeId, si, wiki } from "../utils";
 
 const dialogId = "militaryOverview" as const;
@@ -53,7 +54,7 @@ function open(): void {
 
 function renderDialog(): void {
   columns = getMilitaryColumns();
-  document.getElementById("militaryOverview")?.remove();
+  destroyDialog("militaryOverview");
   const editorHtml = /* html */ `<div id="${dialogId}" class="dialog stable editorDialog">
       <div id="militaryBody" class="table" data-type="absolute">
         ${renderEditorHeader({ dialogId, columns })}
@@ -138,7 +139,7 @@ async function openRegimentsOverview(state: number): Promise<void> {
 }
 
 function getMilitaryColumns(): EditorColumn<MilitaryRow>[] {
-  const unitColumns: EditorColumn<MilitaryRow>[] = options.military.map(unit => ({
+  const unitColumns: EditorColumn<MilitaryRow>[] = options.map.military.units.map(unit => ({
     key: `unit:${unit.name}`,
     label: capitalize(unit.name.replace(/_/g, " ")),
     width: "5em",
@@ -181,7 +182,7 @@ function getMilitaryColumns(): EditorColumn<MilitaryRow>[] {
       sortBy: row => row.alert,
       tip: "War Alert. Modifier to military forces number, depends on political situation. Click to sort"
     },
-    { key: "actions", width: "1.4em", permanent: true, align: "right" }
+    { key: "regiments", width: "1.4em", permanent: true }
   ];
 }
 
@@ -206,13 +207,16 @@ function getMilitaryData(): MilitaryRow[] {
     .filter(state => state.i && !state.removed)
     .map(state => {
       const forces = Object.fromEntries(
-        options.military.map(unit => [
+        options.map.military.units.map(unit => [
           unit.name,
           (state.military || []).reduce((total, regiment) => total + (regiment.u[unit.name] || 0), 0)
         ])
       );
-      const population = rn(((state.rural || 0) + (state.urban || 0) * urbanization) * populationRate);
-      const total = options.military.reduce((sum, unit) => sum + (forces[unit.name] || 0) * unit.crew, 0);
+      const population = rn(
+        ((state.rural || 0) + (state.urban || 0) * options.map.units.population.urbanization.rate) *
+          options.map.units.population.scale
+      );
+      const total = options.map.military.units.reduce((sum, unit) => sum + (forces[unit.name] || 0) * unit.crew, 0);
       return {
         state,
         forces,
@@ -236,7 +240,7 @@ function renderMilitaryPage(view: TableView<MilitaryRow>): void {
     (result, row) => {
       result.total += row.total;
       result.population += row.population;
-      for (const unit of options.military)
+      for (const unit of options.map.military.units)
         result.units[unit.name] = (result.units[unit.name] || 0) + row.forces[unit.name];
       return result;
     },
@@ -245,7 +249,7 @@ function renderMilitaryPage(view: TableView<MilitaryRow>): void {
   const percent = (value: number, total: number) => `${rn(total ? (value / total) * 100 : 0)}%`;
   const lines = view.rows
     .map(row => {
-      const unitCells = options.military
+      const unitCells = options.map.military.units
         .map(unit => {
           const value = row.forces[unit.name] || 0;
           return `<div data-col="${`unit:${unit.name}`}" data-tip="State ${unit.name} units number">${percentage ? percent(value, totals.units[unit.name] || 0) : value}</div>`;
@@ -259,7 +263,7 @@ function renderMilitaryPage(view: TableView<MilitaryRow>): void {
         <div data-col="population" data-tip="State population">${percentage ? percent(row.population, totals.population) : si(row.population)}</div>
         <div data-col="rate" data-tip="Military personnel rate (% of state population). Depends on war alert">${rn(row.rate, 2)}%</div>
         <input data-col="alert" data-tip="War Alert. Editable modifier to military forces number, depends on political situation" type="number" min="0" step=".01" value="${rn(row.alert, 2)}" />
-        <div data-col="actions"><span data-tip="Show regiments list" class="icon-list-bullet pointer"></span></div>
+        <span data-col="regiments" data-tip="Show regiments list" class="icon-list-bullet pointer"></span>
       </div>`;
     })
     .join("");
@@ -358,7 +362,7 @@ function militaryCustomize(): void {
   const types = ["melee", "ranged", "mounted", "machinery", "naval", "armored", "aviation", "magical"];
   const tableBody = ensureEl("militaryOptions").querySelector("tbody")!;
   removeUnitLines();
-  options.military.map(unit => addUnitLine(unit));
+  options.map.military.units.map(unit => addUnitLine(unit));
 
   $("#militaryOptions").dialog({
     title: "Edit Military Units",
@@ -395,21 +399,15 @@ function militaryCustomize(): void {
     }
   });
 
-  if (modules.overviewMilitaryCustomize) return;
-  modules.overviewMilitaryCustomize = true;
-
+  // renderOptions() rebuilds the dialog markup on every open, so the listener is bound to the fresh
+  // tbody each time. Do not guard this with a one-time flag: the old node is gone with its listener
   tableBody.addEventListener("click", event => {
-    const el = event.target as HTMLElement;
-    if (el.tagName !== "BUTTON") return;
+    const el = (event.target as HTMLElement).closest<HTMLButtonElement>("button");
+    if (!el) return;
     const type = el.dataset.type;
 
     if (type === "icon") {
-      Controllers.IconSelector.open(el.textContent || "", value => {
-        el.innerHTML =
-          value.startsWith("http") || value.startsWith("data:image")
-            ? `<img src="${value}" style="width:1.2em;height:1.2em;pointer-events:none;">`
-            : value;
-      });
+      Controllers.IconSelector.open(el.dataset.icon || "", value => setIconButton(el, value));
       return;
     }
 
@@ -459,13 +457,7 @@ function militaryCustomize(): void {
     };
 
     row.innerHTML = /* html */ `<td>
-          <button data-type="icon" data-tip="Click to select unit icon">
-            ${
-              icon.startsWith("http") || icon.startsWith("data:image")
-                ? `<img src="${icon}" style="width:1.2em;height:1.2em;pointer-events:none;">`
-                : icon || ""
-            }
-          </button>
+          <button data-type="icon" data-tip="Click to select unit icon" translate="no"></button>
         </td>
         <td><input data-tip="Type unit name. If name is changed for existing unit, old unit will be replaced" value="${name}" /></td>
         <td>${getLimitButton("biomes")}</td>
@@ -488,7 +480,24 @@ function militaryCustomize(): void {
         <td data-tip="Remove the unit">
           <span data-tip="Remove unit type" class="icon-trash-empty pointer" onclick="this.parentElement.parentElement.remove();"></span>
         </td>`;
+    setIconButton(row.querySelector<HTMLButtonElement>("button[data-type='icon']")!, icon || "");
     tableBody.appendChild(row);
+  }
+
+  // the button holds the canonical icon in a dataset attribute: its content is presentation only and
+  // may be rewritten by the browser or extensions (e.g. Google Translate wrapping text nodes in <font>)
+  function setIconButton(button: HTMLElement, icon: string): void {
+    button.dataset.icon = icon;
+    button.textContent = "";
+
+    if (isImageIcon(icon)) {
+      const image = document.createElement("img");
+      image.src = icon;
+      image.style.cssText = "width: 1.2em; height: 1.2em; pointer-events: none";
+      button.appendChild(image);
+    } else {
+      button.textContent = icon;
+    }
   }
 
   function restoreDefaultUnits(): void {
@@ -527,6 +536,8 @@ function militaryCustomize(): void {
     $("#alert").dialog({
       width: "fit-content",
       title: "Limit unit",
+      // release the buttons closure that captures the live pack arrays
+      close: () => $("#alert").dialog("option", "buttons", {}),
       buttons: {
         Invert: () => {
           alertMessage.querySelectorAll<HTMLInputElement>("input").forEach(el => {
@@ -568,17 +579,13 @@ function militaryCustomize(): void {
 
     $("#militaryOptions").dialog("close");
 
-    options.military = unitLines.map((r, i) => {
+    const units = unitLines.map((r, i) => {
       const elements = Array.from(
         r.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement>("input, button, select")
       );
       const values = elements.map(el => {
         const { type, value } = (el as HTMLElement).dataset || {};
-        if (type === "icon") {
-          const html = el.innerHTML.trim();
-          const isImage = html.startsWith("<img");
-          return isImage ? html.match(/src="([^"]*)"/)![1] : html || "⠀";
-        }
+        if (type === "icon") return (el as HTMLElement).dataset.icon?.trim() || "⠀";
         if (type) return value ? value.split(",").map(v => parseInt(v, 10)) : null;
         if ((el as HTMLInputElement).type === "number") return +(el as HTMLInputElement).value || 0;
         if ((el as HTMLInputElement).type === "checkbox") return +(el as HTMLInputElement).checked || 0;
@@ -615,14 +622,16 @@ function militaryCustomize(): void {
       if (religions) unit.religions = religions;
       return unit;
     });
-    localStorage.setItem("military", JSON.stringify(options.military));
+    options.map.military.units = units;
+    Options.save(); // the roster is this map's, and what the next map starts from
     Military.generate();
+    Layers.draw("military");
     rebuildMilitaryColumns();
   }
 }
 
 function renderOptions(): void {
-  document.getElementById("militaryOptions")?.remove();
+  destroyDialog("militaryOptions");
   const optionsHtml = /* html */ `<div id="militaryOptions" class="dialog stable">
       <div class="table">
         <table id="militaryOptionsTable">
@@ -677,7 +686,7 @@ function militaryRecalculate(): void {
 }
 
 function downloadMilitaryData(): void {
-  const units = options.military.map(u => u.name);
+  const units = options.map.military.units.map(u => u.name);
   let data = `Id,State,${units.map(u => capitalize(u)).join(",")},Total,Population,Rate,War Alert\n`; // headers
 
   for (const row of getMilitaryData()) {
@@ -688,4 +697,4 @@ function downloadMilitaryData(): void {
   downloadFile(data, name);
 }
 
-export const MilitaryOverview = { open };
+export const MilitaryOverview = { open, exportCsv: downloadMilitaryData };

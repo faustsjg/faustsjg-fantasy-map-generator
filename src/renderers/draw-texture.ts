@@ -2,12 +2,9 @@ import type { Layer } from "@/components/layers";
 
 export function drawTexture(layer: Layer): void {
   const element = layer.getEl();
-  const href = element.getAttribute("data-href");
+  const { href, x, y } = styles.texture.options;
   if (!href) return void element.replaceChildren();
 
-  const x = Number(element.getAttribute("data-x") || 0);
-  const y = Number(element.getAttribute("data-y") || 0);
-
   element.innerHTML = /* html */ `<image preserveAspectRatio="xMidYMid slice"
-    x="${x}" y="${y}" width="${graphWidth - x}" height="${graphHeight - y}" href="${href}"></image>`;
+    x="${x}" y="${y}" width="${Math.max(options.map.graph.width - x, 0)}" height="${Math.max(options.map.graph.height - y, 0)}" href="${href}"></image>`;
 }

@@ -4,10 +4,10 @@
 import type { TerrainBounds } from "@/generators/terrain-dsl";
 
 export function moveInfluenceBox(bounds: TerrainBounds): void {
-  const x = (bounds.xMin / 100) * graphWidth;
-  const y = (bounds.yMin / 100) * graphHeight;
-  const width = ((bounds.xMax - bounds.xMin) / 100) * graphWidth;
-  const height = ((bounds.yMax - bounds.yMin) / 100) * graphHeight;
+  const x = (bounds.xMin / 100) * options.map.graph.width;
+  const y = (bounds.yMin / 100) * options.map.graph.height;
+  const width = ((bounds.xMax - bounds.xMin) / 100) * options.map.graph.width;
+  const height = ((bounds.yMax - bounds.yMin) / 100) * options.map.graph.height;
 
   const box = document.getElementById("terrainInfluenceBox");
   if (!box) {

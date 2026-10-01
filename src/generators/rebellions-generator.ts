@@ -122,7 +122,8 @@ class RebellionsModule {
 
     const onDifferentLandmass = pack.cells.f?.[provinceBurg.cell] !== pack.cells.f?.[capitalBurg.cell];
 
-    const yearsSinceAnnexation = province.annexedYear === undefined ? Infinity : options.year - province.annexedYear;
+    const yearsSinceAnnexation =
+      province.annexedYear === undefined ? Infinity : options.map.lore.calendar.year - province.annexedYear;
     const recentAnnexationBonus =
       minmax(1 - yearsSinceAnnexation / RECENT_ANNEXATION_DECAY_YEARS, 0, 1) * MAX_RECENT_ANNEXATION_BONUS;
 

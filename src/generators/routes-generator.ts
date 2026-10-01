@@ -1,5 +1,5 @@
 import Alea from "alea";
-import { curveCatmullRom, line, select } from "d3";
+import { curveCatmullRom, line } from "d3";
 import Delaunator from "delaunator";
 import { distanceSquared, findPath, getAdjective, isLand, ra, rn, round, rw } from "../utils";
 import { meander } from "../utils/pathUtils";
@@ -182,6 +182,7 @@ export interface Route {
   length?: number;
   lock?: boolean;
   label?: Label;
+  note?: string;
 }
 
 type RiverEdge = { riverId: number; fromIndex: number };
@@ -206,7 +207,7 @@ class RoutesModule {
   }
 
   generate(lockedRoutes: Route[] = [], randomSeed?: number) {
-    Math.random = Alea(randomSeed ?? seed);
+    Math.random = Alea(randomSeed ?? options.map.seed);
     this.connections = new Map();
     this.buildRiverEdges();
     lockedRoutes.forEach((route: Route) => {
@@ -362,24 +363,45 @@ class RoutesModule {
     return segments;
   }
 
+  /** A water route may only reach its destination cell from a legitimate approach */
+  private createWaterExitCheck(exit: number) {
+    return (next: number, current?: number) => {
+      if (next !== exit) return false;
+      if (current === undefined) return true;
+      // river port: approach along the river course
+      if (this.riverEdges.get(current)?.has(next)) return true;
+      // coastal port: approach only over water, through the haven the burg was shifted towards
+      if (pack.cells.h[current] >= 20) return false;
+      const haven = pack.cells.haven?.[exit];
+      return !haven || current === haven;
+    };
+  }
+
   private findPathSegments({ isWater, start, exit }: { isWater: boolean; start: number; exit: number }) {
     const getCost = this.createCostEvaluator({ isWater });
-    const isExit = isWater
-      ? (next: number, current?: number) => {
-          if (next !== exit) return false;
-          if (current === undefined) return true;
-          // river port: approach along the river course
-          if (this.riverEdges.get(current)?.has(next)) return true;
-          // coastal port: approach only over water, through the haven the burg was shifted towards
-          if (pack.cells.h[current] >= 20) return false;
-          const haven = pack.cells.haven?.[exit];
-          return !haven || current === haven;
-        }
-      : (next: number) => next === exit;
+    const isExit = isWater ? this.createWaterExitCheck(exit) : (next: number) => next === exit;
     const pathCells = findPath(start, isExit, getCost, pack);
     if (!pathCells) return [];
     const segments = this.getRouteSegments(pathCells);
     return segments;
+  }
+
+  /**
+   * Cell chain of a sea route between two cells, or null if they are not connected by water.
+   * Follows the same rules as generated searoutes: ports are left and entered through their
+   * haven, navigable rivers are passable, colder seas are not, and existing routes are cheap.
+   */
+  findWaterPath(start: number, exit: number): number[] | null {
+    return findPath(start, this.createWaterExitCheck(exit), this.getWaterPathCost.bind(this), pack);
+  }
+
+  /** Sea route geometry for a cell chain: burg positions at ports, meandering along river runs */
+  getWaterPoints(cells: number[]): [number, number, number][] {
+    // only the chain's own cells are read, so this skips preparePointsArray's whole-map allocation
+    return this.addMeandering(
+      cells,
+      cells.map(cellId => this.getCellAnchor(cellId))
+    );
   }
 
   private generateMainRoads() {
@@ -466,12 +488,16 @@ class RoutesModule {
   }
 
   private preparePointsArray(): Point[] {
+    return pack.cells.p.map((_point, cellId) => this.getCellAnchor(cellId));
+  }
+
+  /** The point a route passes through in a cell: the burg's position at a port, the cell centre otherwise */
+  private getCellAnchor(cellId: number): Point {
     const { cells, burgs } = pack;
-    return cells.p.map(([x, y], cellId) => {
-      const burgId = cells.burg[cellId];
-      if (burgId) return [burgs[burgId].x, burgs[burgId].y];
-      return [x, y];
-    });
+    const burgId = cells.burg[cellId];
+    if (burgId) return [burgs[burgId].x, burgs[burgId].y];
+    const [x, y] = cells.p[cellId];
+    return [x, y];
   }
 
   // Group consecutive route cells that follow a single river in one direction into maximal runs.
@@ -522,7 +548,7 @@ class RoutesModule {
       meandering: 0.5,
       startStep: h[river.cells[0]] < 20 ? 1 : 10,
       isWaterCell: river.cells.map(c => c !== -1 && h[c] < 20),
-      bounds: { width: graphWidth, height: graphHeight }
+      bounds: { width: options.map.graph.width, height: options.map.graph.height }
     });
 
     this.riverGeometryCache.set(river.i, geometry);
@@ -705,6 +731,18 @@ class RoutesModule {
     }
   }
 
+  /** custom route groups (old maps, the route groups editor) can miss a style entry - without
+   * one the style editor's edits are DOM-only and presets drop the group */
+  ensureRouteGroupStyles(): void {
+    const { groups } = styles.routes;
+    const template = groups.roads || Object.values(groups)[0];
+    if (!template) return;
+    // presets are also applied on initial page load, before any map (and its routes) exists
+    for (const group of new Set((pack.routes ?? []).map(route => route.group))) {
+      if (!groups[group]) groups[group] = structuredClone(template);
+    }
+  }
+
   buildLinks(routes: Route[]): Record<number, Record<number, number>> {
     const links: Record<number, Record<number, number>> = {};
 
@@ -825,7 +863,6 @@ class RoutesModule {
     }
 
     pack.routes = pack.routes.filter(r => r.i !== route.i);
-    select("#viewbox").select(`#route${route.i}`).remove();
   }
 
   getConnectivityRate(cellId: number): number {
@@ -889,7 +926,12 @@ class RoutesModule {
   }
 
   getLength(routeId: number): number {
-    const path = select("#routes").select(`#route${routeId}`).node() as SVGPathElement;
+    const route = pack.routes.find(route => route.i === routeId);
+    if (!route) return 0;
+
+    // measured off-DOM: the rendered layer only holds the routes currently in the viewport
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", this.getPath(route));
     return path.getTotalLength();
   }
 

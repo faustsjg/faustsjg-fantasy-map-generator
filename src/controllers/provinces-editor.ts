@@ -1,4 +1,5 @@
-import { color as d3Color, easeSinIn, interpolate, interpolateString, select, stratify, transition, treemap } from "d3";
+import { color as d3Color, easeSinIn, interpolate, select, stratify, transition, treemap } from "d3";
+import { createAnnexMode } from "@/components/annex-mode";
 import { closeDialogs, confirmationDialog, destroyDialog, updateDialog } from "@/components/dialog/dialog-helpers";
 import { applyLineHighlighting } from "@/components/dialog/highlighting";
 import { bindColumnSorting, sortDataByColumns } from "@/components/dialog/sorting";
@@ -11,8 +12,9 @@ import {
   renderEditorPagination,
   type TableView
 } from "@/components/dialog/table";
-import type { FillBoxElement } from "@/components/fill-box";
 import { Layers } from "@/components/layers";
+import { Notes } from "@/components/notes";
+import type { FillBoxElement } from "@/components/shared/fill-box";
 import { clearMainTip, tip } from "@/components/tooltips";
 import { applyDefaultViewboxEvents } from "@/components/viewbox-events";
 import { Controllers } from "@/controllers";
@@ -21,7 +23,7 @@ import type { Province } from "@/generators/provinces-generator";
 import { redrawEmblem, redrawEmblems, removeEmblem } from "@/renderers/draw-emblems";
 import { EmblemRenderer } from "@/renderers/emblems/renderer";
 import { fog, unfog } from "@/renderers/overlays/fogging";
-import { highlightElement } from "@/renderers/overlays/highlight";
+import { highlightElement, highlightOutline } from "@/renderers/overlays/highlight";
 import { applyOption, downloadFile, getArea, getAreaUnit, getFileName, speak } from "@/utils";
 import { ensureEl, findEl, getPointer, getRandomColor, isLand, P, rand, rn, si, unique } from "../utils";
 
@@ -31,7 +33,10 @@ let filterState: { stateId: number };
 
 const getProvinceArea = (province: Province) => getArea(province.area!);
 const getProvincePopulation = (province: Province) =>
-  rn(province.rural! * populationRate + province.urban! * populationRate * urbanization);
+  rn(
+    province.rural! * options.map.units.population.scale +
+      province.urban! * options.map.units.population.scale * options.map.units.population.urbanization.rate
+  );
 const columns: EditorColumn<Province>[] = [
   { key: "color", width: "1.2em", permanent: true },
   {
@@ -82,7 +87,12 @@ const columns: EditorColumn<Province>[] = [
     sortBy: getProvinceArea
   },
   { key: "population", label: "Population", width: "6em", sortBy: getProvincePopulation },
-  { key: "actions", width: "5.4em", permanent: true, align: "right" }
+  { key: "note", width: "1.1em" },
+  { key: "independence", width: "1.1em" },
+  { key: "locate", width: "1.1em" },
+  { key: "focus", width: "1.1em" },
+  { key: "lock", width: "1.1em" },
+  { key: "remove", width: "1.4em", permanent: true }
 ];
 const provincesTable = initEditorTable<Province>({ getData: getProvincesData, onUpdate: renderProvincesPage });
 
@@ -157,6 +167,11 @@ function renderDialog(): void {
         ></button>
         <button id="provincesMerge" data-tip="Merge several provinces into one" class="icon-layer-group"></button>
         <button
+          id="provincesAnnex"
+          data-tip="Annex provinces: click the annexing province, then the provinces of the same state it absorbs. Hold Shift to keep annexing"
+          class="icon-crown"
+        ></button>
+        <button
           id="provincesRemoveAll"
           data-tip="Remove all provinces. States will remain as they are"
           class="icon-trash"
@@ -189,6 +204,7 @@ function renderDialog(): void {
   ensureEl("provincesRelease").addEventListener("click", triggerProvincesRelease);
   ensureEl("provincesAdd").addEventListener("click", enterAddProvinceMode);
   ensureEl("provincesMerge").addEventListener("click", openProvinceMergeDialog);
+  ensureEl("provincesAnnex").addEventListener("click", provincesAnnex.toggle);
   ensureEl("provincesRecolor").addEventListener("click", recolorProvinces);
 
   ensureEl("provincesBodySection").addEventListener("click", (ev: Event) => {
@@ -211,6 +227,7 @@ function renderDialog(): void {
     else if (cl.contains("icon-target"))
       highlightElement(select<SVGGElement, unknown>("#provs").select(`#province${p}`).node() as Element, 8);
     else if (cl.contains("icon-pin")) toggleFog(p, cl);
+    else if (cl.contains("icon-book")) void Controllers.NotesEditor.open({ type: "province", id: p });
     else if (cl.contains("icon-trash-empty")) removeProvince(p);
     else if (cl.contains("icon-lock") || cl.contains("icon-lock-open")) updateLockStatus(p, cl);
   });
@@ -294,8 +311,8 @@ function renderProvincesPage(view: TableView<Province>): void {
   const lines = view.rows
     .map(p => {
       const area = getProvinceArea(p);
-      const rural = p.rural! * populationRate;
-      const urban = p.urban! * populationRate * urbanization;
+      const rural = p.rural! * options.map.units.population.scale;
+      const urban = p.urban! * options.map.units.population.scale * options.map.units.population.urbanization.rate;
       const population = getProvincePopulation(p);
       const populationTip = `Total population: ${si(population)}; Rural population: ${si(rural)}; Urban population: ${si(urban)}`;
       const stateName = pack.states[p.state].name;
@@ -324,7 +341,12 @@ function renderProvincesPage(view: TableView<Province>): void {
         <span data-tip="${populationTip}" class="icon-male"></span>
         <span data-tip="${populationTip}" class="culturePopulation">${percentage ? `${rn(totals.population ? (population / totals.population) * 100 : 0)}%` : si(population)}</span>
       </div>
-      <div data-col="actions"><span data-tip="Declare province independence (turn non-capital province with burgs into a new state)" class="icon-flag-empty ${separable ? "" : "placeholder"}"></span><span data-tip="Locate the province" class="icon-target"></span><span data-tip="Toggle province focus" class="icon-pin ${focused ? "" : " inactive"}"></span><span data-tip="Lock the province" class="icon-lock${p.lock ? "" : "-open"}"></span><span data-tip="Remove the province" class="icon-trash-empty"></span></div>
+      ${Notes.getIcon("this province")}
+      <span data-col="independence" data-tip="Declare province independence (turn non-capital province with burgs into a new state)" class="icon-flag-empty ${separable ? "" : "placeholder"}"></span>
+      <span data-col="locate" data-tip="Locate the province" class="icon-target"></span>
+      <span data-col="focus" data-tip="Toggle province focus" class="icon-pin ${focused ? "" : " inactive"}"></span>
+      <span data-col="lock" data-tip="Lock the province" class="icon-lock${p.lock ? "" : "-open"}"></span>
+      <span data-col="remove" data-tip="Remove the province" class="icon-trash-empty"></span>
     </div>`;
     })
     .join("");
@@ -563,8 +585,8 @@ function changePopulation(province: number): void {
     tip("Province does not have any cells, cannot change population", false, "error");
     return;
   }
-  const rural = rn(p.rural! * populationRate);
-  const urban = rn(p.urban! * populationRate * urbanization);
+  const rural = rn(p.rural! * options.map.units.population.scale);
+  const urban = rn(p.urban! * options.map.units.population.scale * options.map.units.population.urbanization.rate);
   const total = rural + urban;
   const l = (n: number): string => Number(n).toLocaleString();
 
@@ -609,7 +631,7 @@ function changePopulation(province: number): void {
       });
     }
     if (!Number.isFinite(ruralChange) && +ruralPop.value > 0) {
-      const points = +ruralPop.value / populationRate;
+      const points = +ruralPop.value / options.map.units.population.scale;
       const pop = rn(points / cells.length);
       cells.forEach(i => {
         pack.cells.pop[i] = pop;
@@ -623,7 +645,8 @@ function changePopulation(province: number): void {
       });
     }
     if (!Number.isFinite(urbanChange) && +urbanPop.value > 0) {
-      const points = +urbanPop.value / populationRate / urbanization;
+      const points =
+        +urbanPop.value / options.map.units.population.scale / options.map.units.population.urbanization.rate;
       const population = rn(points / p.burgs!.length, 4);
       p.burgs!.forEach(b => {
         pack.burgs[b].population = population;
@@ -896,6 +919,8 @@ function togglePercentageMode(): void {
 type TreeNode = any;
 
 function showChart(): void {
+  collectStatistics(); // the chart can open from search before the editor ever did
+
   // build hierarchy tree
   const getColor = (s: TreeNode): string =>
     !s.i || s.removed || s.color[0] !== "#" ? "#666" : String(d3Color(s.color)!.darker());
@@ -962,8 +987,10 @@ function showChart(): void {
     const state = pack.states[d.data.state].fullName;
 
     const area = `${getArea(d.data.area)} ${getAreaUnit()}`;
-    const rural = rn(d.data.rural * populationRate);
-    const urban = rn(d.data.urban * populationRate * urbanization);
+    const rural = rn(d.data.rural * options.map.units.population.scale);
+    const urban = rn(
+      d.data.urban * options.map.units.population.scale * options.map.units.population.urbanization.rate
+    );
 
     const typeValue = ensureEl<HTMLSelectElement>("provincesTreeType").value;
     const value =
@@ -1240,16 +1267,18 @@ function recolorProvinces(): void {
     p.color = stateColor[0] === "#" ? d3Color(interpolate(stateColor, rndColor)(0.2))!.hex() : rndColor;
   });
 
-  Layers.show("provinces");
+  Layers.draw("provinces");
+  provincesTable.refresh();
 }
 
 function downloadProvincesData(): void {
-  const unit = areaUnit.value === "square" ? `${distanceUnitInput.value}2` : areaUnit.value;
+  const unit =
+    options.map.units.area.unit === "square" ? `${options.map.units.distance.unit}2` : options.map.units.area.unit;
   let data = `Id,Province,Full Name,Form,State,Color,Capital,Area ${unit},Total Population,Rural Population,Urban Population,Burgs\n`; // headers
 
   for (const province of getProvincesData()) {
     const capital = province.burg ? pack.burgs[province.burg].name : "";
-    data += `${province.i},${province.name},${province.fullName},${province.formName},${pack.states[province.state].name},${province.color},${capital},${getProvinceArea(province)},${getProvincePopulation(province)},${Math.round(province.rural! * populationRate)},${Math.round(province.urban! * populationRate * urbanization)},${province.burgs!.length}\n`;
+    data += `${province.i},${province.name},${province.fullName},${province.formName},${pack.states[province.state].name},${province.color},${capital},${getProvinceArea(province)},${getProvincePopulation(province)},${Math.round(province.rural! * options.map.units.population.scale)},${Math.round(province.urban! * options.map.units.population.scale * options.map.units.population.urbanization.rate)},${province.burgs!.length}\n`;
   }
 
   const name = `${getFileName("Provinces")}.csv`;
@@ -1294,6 +1323,11 @@ function removeAllProvinces(): void {
 
 function closeProvincesEditor(): void {
   if (customization === 12) exitAddProvinceMode();
+  provincesAnnex.exit();
+  Controllers.ColorPicker.close();
+  const view = provincesTable.view();
+  view.rows = [];
+  view.all = [];
   $("#provincesEditor").dialog("destroy");
   ensureEl("provincesEditor").remove();
 }
@@ -1326,15 +1360,13 @@ function openProvinceMergeDialog(): void {
     return;
   }
 
-  const emblem = (i: number): string =>
-    /* html */ `<svg class="coaIcon" viewBox="0 0 200 200"><use href="#provinceCOA${i}"></use></svg>`;
   const provincesSelector = provincesToMerge
     .map(
       p => /* html */ `
     <div data-id="${p.i}" data-tip="${p.fullName || p.name}" style="cursor:default">
       <input type="radio" name="rulingProvince" value="${p.i}" />
       <input id="selectProvince${p.i}" class="checkbox" type="checkbox" name="provincesToMerge" value="${p.i}" />
-      <label for="selectProvince${p.i}" class="checkbox-label"><fill-box fill="${p.color}" disabled></fill-box>${emblem(p.i)}${p.name}</label>
+      <label for="selectProvince${p.i}" class="checkbox-label"><fill-box fill="${p.color}" disabled></fill-box>${provinceEmblem(p.i)}${p.name}</label>
     </div>
   `
     )
@@ -1382,20 +1414,7 @@ function openProvinceMergeDialog(): void {
           return;
         }
 
-        confirmationDialog({
-          title: "Merge provinces",
-          message: /* html */ `
-            <p>The following provinces will be <strong>removed</strong>: ${provincesToMergeIds
-              .map(provinceId => `${emblem(provinceId)}${pack.provinces[provinceId].name}`)
-              .join(", ")}.</p>
-            <p>Removed provinces data (burgs and cells) will be assigned to ${emblem(primaryProvinceId)}${pack.provinces[primaryProvinceId].name}.</p>
-            <p>Are you sure you want to merge provinces? This action cannot be reverted.</p>`,
-          confirm: "Merge",
-          onConfirm: () => {
-            mergeProvinces(provincesToMergeIds, primaryProvinceId);
-            $(this).dialog("close");
-          }
-        });
+        confirmProvincesMerge(provincesToMergeIds, primaryProvinceId, () => $(this).dialog("close"));
       },
       Cancel: function (this: HTMLElement) {
         $(this).dialog("close");
@@ -1403,6 +1422,45 @@ function openProvinceMergeDialog(): void {
     }
   });
 }
+
+const provinceEmblem = (i: number): string =>
+  /* html */ `<svg class="coaIcon" viewBox="0 0 200 200"><use href="#provinceCOA${i}"></use></svg>`;
+
+// Both ways of merging (the Merge dialog and annexing by clicking on the map) end here, so the lock
+// check lives here too: a locked province must not be absorbed and removed
+function confirmProvincesMerge(provincesToMerge: number[], primaryProvinceId: number, onConfirm?: () => void): void {
+  const locked = provincesToMerge.map(id => pack.provinces[id]).find(province => province.lock);
+  if (locked) return void tip(`Cannot merge ${locked.name} - it's locked. Unlock it first`, false, "error");
+
+  confirmationDialog({
+    title: "Merge provinces",
+    message: /* html */ `
+      <p>The following provinces will be <strong>removed</strong>: ${provincesToMerge
+        .map(provinceId => `${provinceEmblem(provinceId)}${pack.provinces[provinceId].name}`)
+        .join(", ")}.</p>
+      <p>Removed provinces data (burgs and cells) will be assigned to ${provinceEmblem(primaryProvinceId)}${pack.provinces[primaryProvinceId].name}.</p>
+      <p>Are you sure you want to merge provinces? This action cannot be reverted.</p>`,
+    confirm: "Merge",
+    onConfirm: () => {
+      mergeProvinces(provincesToMerge, primaryProvinceId);
+      onConfirm?.();
+    }
+  });
+}
+
+const provincesAnnex = createAnnexMode({
+  buttonId: "provincesAnnex",
+  bodySectionId: "provincesBodySection",
+  noun: "province",
+  ownerOf: cellId => pack.cells.province[cellId],
+  colorOf: provinceId => pack.provinces[provinceId].color,
+  nameOf: provinceId => pack.provinces[provinceId].name,
+  rejectReason: (primaryId, provinceId) =>
+    pack.provinces[provinceId].state === pack.provinces[primaryId].state
+      ? undefined
+      : `${pack.provinces[provinceId].name} belongs to another state. Merge states first, or pick a province of ${pack.states[pack.provinces[primaryId].state].name}`,
+  commit: (primaryProvinceId, provincesToMerge) => confirmProvincesMerge(provincesToMerge, primaryProvinceId)
+});
 
 function highlightProvinceOnMergeHover(event: Event): void {
   if (!Layers.isOn("provinces")) return;
@@ -1412,24 +1470,7 @@ function highlightProvinceOnMergeHover(event: Event): void {
   if (!d) return;
 
   provinceHighlightOff(event);
-
-  const path = select("#debug")
-    .append("path")
-    .attr("class", "highlight")
-    .attr("d", d)
-    .attr("fill", "none")
-    .attr("stroke", "red")
-    .attr("stroke-width", 1)
-    .attr("opacity", 1)
-    .attr("filter", "url(#blur1)");
-
-  const totalLength = (path.node() as SVGPathElement).getTotalLength();
-  const duration = (totalLength + 5000) / 2;
-  const interp = interpolateString(`0, ${totalLength}`, `${totalLength}, ${totalLength}`);
-  path
-    .transition()
-    .duration(duration)
-    .attrTween("stroke-dasharray", () => interp);
+  highlightOutline(d);
 }
 
 function cleanupMergedProvince(provinceId: number): void {
@@ -1501,4 +1542,4 @@ function updateLockStatus(provinceId: number, classList: DOMTokenList): void {
   classList.toggle("icon-lock");
 }
 
-export const ProvincesEditor = { open };
+export const ProvincesEditor = { open, showChart };
