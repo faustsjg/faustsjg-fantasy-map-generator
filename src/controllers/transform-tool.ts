@@ -46,6 +46,13 @@ function renderDialog(): void {
       This operation is destructive and irreversible. It will create a completely new map based on the current one.
       Don't forget to save the .map file to your machine first!
     </div>
+    ${
+      pack.eras?.length
+        ? /* html */ `<div style="padding-top: 0.5em; width: 40em; font-weight: bold; color: #b12117">
+      This map has ${pack.eras.length} generated eras. They will be lost: the new map keeps only what is on screen now.
+    </div>`
+        : ""
+    }
     <div
       id="transformToolBody"
       style="
